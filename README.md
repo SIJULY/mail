@@ -1,3 +1,7 @@
+一键安装脚本： bash <(curl -sSL https://raw.githubusercontent.com/SIJULY/mail/main/install.sh)
+
+
+
 # 轻量级邮件收发与管理系统
 
 这是一个非常典型的自托管 (Self-Hosted)、轻量级 (Lightweight) 的邮件解决方案，它巧妙地将专业的邮件收发服务与一个灵活的Web应用结合了起来。
