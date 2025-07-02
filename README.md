@@ -45,6 +45,7 @@
 获取DNS记录：点击“Next”后，SendGrid 会为您生成 3条 CNAME 类型的DNS记录。页面上会清楚地列出每一条记录的 “主机”(Host/Name) 和 “值”(Value/Points To)。
 
 它们看起来会是这样（这只是例子，请以您页面上显示的为准）：
+
 Host: em123.sijuly.nyc.mn, Value: u456789.wl.sendgrid.net
 
 Host: s1._domainkey.sijuly.nyc.mn, Value: s1.domainkey.u456789.wl.sendgrid.net
