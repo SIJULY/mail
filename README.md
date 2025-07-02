@@ -46,7 +46,9 @@
 
 它们看起来会是这样（这只是例子，请以您页面上显示的为准）：
 Host: em123.sijuly.nyc.mn, Value: u456789.wl.sendgrid.net
+
 Host: s1._domainkey.sijuly.nyc.mn, Value: s1.domainkey.u456789.wl.sendgrid.net
+
 Host: s2._domainkey.sijuly.nyc.mn, Value: s2.domainkey.u456789.wl.sendgrid.net
 
 添加DNS记录：
