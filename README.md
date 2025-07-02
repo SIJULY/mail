@@ -18,31 +18,41 @@
 ### 邮件发送层 (Sending Layer) - SMTP 中继模式 (SMTP Relay)
 我们没有在服务器上搭建自己的发信服务，这是整个项目最明智的一个架构决策。我们采用的是业界推荐的 SMTP 中继模式。当您点击“发送邮件”时，我们的应用会作为一个客户端，通过加密端口（如 587）连接到专业的第三方邮件服务商（如 SendGrid）。所有复杂的发信任务，包括处理 PTR/SPF/DKIM 记录、维护IP信誉等，都外包给了这些专业服务。
 
-#### 获取 SendGrid SMTP 凭证完整步骤
+#### 获取 SendGrid SMTP 凭证（API) 完整步骤
 
 ##### 第1步：注册 SendGrid 账户
 访问官网：前往 SendGrid 官网。
 开始免费使用：点击页面上的 "Start for Free" 或类似按钮。
 填写信息：按照要求填写您的邮箱、密码，并创建账户。
 激活账户：SendGrid 会向您的注册邮箱发送一封确认邮件，请务必登录您的邮箱，点击邮件中的链接来激活您的 SendGrid 账户。
+
 ##### 第2步：验证发信域名（最关键的一步）
 这是最重要的一步。您必须向 SendGrid 证明您拥有 mail.sijuly.nyc.mn 这个域名（或者其主域名 sijuly.nyc.mn），这样 SendGrid 才允许您用这个域名下的地址作为发件人。这也可以极大地提高您邮件的送达率，避免被当成垃圾邮件。
 登录 SendGrid：登录到您的 SendGrid 仪表盘。
+
 进入发件人认证：在左侧菜单中找到 Settings -> Sender Authentication。
+
 认证您的域名：在 “Domain Authentication” 部分，点击 Authenticate Your Domain 或 Get Started 按钮。
+
 选择DNS服务商：它会问您的DNS托管服务商是谁（比如 GoDaddy, Cloudflare 等）。如果您不确定，可以直接选择 “Other Host (Not Listed)”。
+
 输入您的域名：在输入框中，输入您要用于发信的主域名。对于 mail.sijuly.nyc.mn 来说，您应该输入根域名： sijuly.nyc.mn
+
 获取DNS记录：点击“Next”后，SendGrid 会为您生成 3条 CNAME 类型的DNS记录。页面上会清楚地列出每一条记录的 “主机”(Host/Name) 和 “值”(Value/Points To)。
+
 它们看起来会是这样（这只是例子，请以您页面上显示的为准）：
 Host: em123.sijuly.nyc.mn, Value: u456789.wl.sendgrid.net
 Host: s1._domainkey.sijuly.nyc.mn, Value: s1.domainkey.u456789.wl.sendgrid.net
 Host: s2._domainkey.sijuly.nyc.mn, Value: s2.domainkey.u456789.wl.sendgrid.net
+
 添加DNS记录：
 现在，请打开一个新的浏览器标签页，登录到您购买 sijuly.nyc.mn 域名的服务商的DNS管理后台。
 完全按照 SendGrid 页面上提供的信息，创建这3条 CNAME 记录。将 SendGrid 提供的“Host”和“Value”分别复制粘贴到您DNS后台的对应输入框中。
+
 在 SendGrid 上进行验证：
 添加完DNS记录后，回到 SendGrid 的页面，勾选 “I've added these records.”，然后点击 Verify 按钮。
 DNS记录的生效需要一些时间，从几分钟到几个小时不等。如果第一次验证失败，请不要着急，可以过一段时间再回来点击 Verify 按钮。
+
 一旦成功，您会看到一个绿色的 “Verified” 状态。
 ##### 第3步：创建并保存 API 密钥
 这个 API 密钥就是我们用来登录 SMTP 服务的“密码”，它的权限很高，必须妥善保管。
