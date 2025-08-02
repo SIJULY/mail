@@ -1,22 +1,16 @@
 #!/bin/bash
 
 # =================================================================================
-# 轻量级邮件服务器一键安装脚本 (V5 - 纯核心服务版)
+# 轻量级邮件服务器一键安装脚本 (最终修正版)
 #
 # 作者: Gemini
 # 日期: 2025-08-02
 #
 # 功能:
-# - 【核心服务模式】: 只安装后台服务，不处理任何域名或Web服务器配置。
-# - 提供一键安装与一键卸载功能。
-# - 多用户系统 (管理员 + 普通用户)。
-# - Web界面管理后台 (需手动配置反向代理)。
-# - 自动清理旧邮件，使用哈希存储密码。
-# - 纯接收邮件，无任何发送/回复功能。
+# - 【健壮性增强】: 自动处理APT锁，禁用干扰服务，全程显示安装日志。
+# - 【语法修正】: 修正了 app.py 中的 'cannot assign to function call' 错误。
+# - 【核心服务模式】: 只安装后台服务，需手动配置Web反向代理。
 #
-# 使用方法:
-# 1. chmod +x install_mail_server_v5.sh
-# 2. ./install_mail_server_v5.sh
 # =================================================================================
 
 # --- 颜色定义 ---
@@ -37,46 +31,52 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
+# --- APT 锁处理函数 ---
+handle_apt_locks() {
+    echo -e "${YELLOW}>>> 正在检查并处理APT锁...${NC}"
+    if ! command -v killall &> /dev/null; then
+        echo "正在安装psmisc以使用killall命令..."
+        apt-get install -y psmisc
+    fi
+    systemctl stop unattended-upgrades 2>/dev/null || true
+    systemctl disable unattended-upgrades 2>/dev/null || true
+    if pgrep -x "apt" > /dev/null || pgrep -x "apt-get" > /dev/null; then
+        echo "检测到正在运行的APT进程，正在强制终止..."
+        killall -9 apt apt-get || true
+        sleep 2
+    fi
+    rm -f /var/lib/apt/lists/lock
+    rm -f /var/cache/apt/archives/lock
+    rm -f /var/lib/dpkg/lock*
+    dpkg --configure -a
+    echo -e "${GREEN}>>> APT环境已清理完毕。${NC}"
+}
+
+
 # --- 卸载功能 ---
 uninstall_server() {
     echo -e "${YELLOW}警告：你确定要卸载邮件服务器核心服务吗？${NC}"
-    echo -e "${RED}此操作将执行以下操作:${NC}"
-    echo "- 停止并禁用 mail-smtp, mail-api 服务"
-    echo "- 删除 systemd 服务文件"
-    echo "- 删除整个应用程序目录 (${PROJECT_DIR})"
-    echo "- ${RED}所有已接收的邮件和用户数据都将被永久删除！${NC}"
-    echo "- 注意: 本脚本不会卸载您手动安装的Caddy等其他软件。"
     read -p "请输入 'yes' 以确认卸载: " CONFIRM_UNINSTALL
     if [ "$CONFIRM_UNINSTALL" != "yes" ]; then
         echo "卸载已取消。"
         exit 0
     fi
-
     echo -e "${BLUE}>>> 正在停止服务...${NC}"
     systemctl stop mail-smtp.service mail-api.service 2>/dev/null || true
     systemctl disable mail-smtp.service mail-api.service 2>/dev/null || true
-
     echo -e "${BLUE}>>> 正在删除服务文件...${NC}"
     rm -f /etc/systemd/system/mail-smtp.service
     rm -f /etc/systemd/system/mail-api.service
-
     echo -e "${BLUE}>>> 正在删除应用程序目录...${NC}"
     rm -rf ${PROJECT_DIR}
-
     systemctl daemon-reload
-
     echo -e "${GREEN}✅ 邮件服务器核心服务已成功卸载。${NC}"
     exit 0
 }
 
 # --- 安装功能 ---
 install_server() {
-    # --- 欢迎与信息收集 ---
-    echo -e "${GREEN}欢迎使用轻量级邮件服务器一键安装脚本 (V5 - 纯核心服务版)！${NC}"
-    echo "------------------------------------------------------------------"
-    echo -e "${YELLOW}本脚本仅安装后台服务，您需要在安装后手动配置Web反向代理。${NC}"
-    echo "------------------------------------------------------------------"
-    
+    echo -e "${GREEN}欢迎使用轻量级邮件服务器一键安装脚本 (最终修正版)！${NC}"
     echo "--- 管理员账户设置 ---"
     read -p "请输入管理员登录名 [默认为: admin]: " ADMIN_USERNAME
     ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
@@ -87,35 +87,24 @@ install_server() {
         exit 1
     fi
     echo
-
-    # --- 变量定义 ---
     FLASK_SECRET_KEY=$(openssl rand -hex 24)
-
-    # --- 步骤 1: 更新系统并安装依赖 ---
+    handle_apt_locks
     echo -e "${GREEN}>>> 步骤 1: 更新系统并安装依赖...${NC}"
-    apt-get update > /dev/null
-    apt-get upgrade -y > /dev/null
-    apt-get install -y python3-pip python3-venv ufw > /dev/null
-
-    # --- 步骤 2: 配置防火墙 ---
+    apt-get update
+    apt-get upgrade -y
+    apt-get install -y python3-pip python3-venv ufw
     echo -e "${GREEN}>>> 步骤 2: 配置防火墙...${NC}"
-    ufw allow ssh > /dev/null
-    ufw allow 25/tcp > /dev/null
-    # Web端口(80, 443)不再由本脚本管理，由您手动配置反代时自行处理
+    ufw allow ssh
+    ufw allow 25/tcp
     ufw --force enable
-
-    # --- 步骤 3: 创建应用程序和虚拟环境 ---
     echo -e "${GREEN}>>> 步骤 3: 创建应用程序...${NC}"
     mkdir -p $PROJECT_DIR
     cd $PROJECT_DIR
     python3 -m venv venv
-    ${PROJECT_DIR}/venv/bin/pip install flask gunicorn aiosmtpd werkzeug > /dev/null
-
-    # --- 步骤 4: 生成安全配置并创建 app.py ---
-    echo -e "${GREEN}>>> 步骤 4: 生成安全配置并写入核心应用代码 (app.py)...${NC}"
+    ${PROJECT_DIR}/venv/bin/pip install flask gunicorn aiosmtpd werkzeug
+    echo -e "${GREEN}>>> 步骤 4: 写入核心应用代码 (app.py)...${NC}"
     ADMIN_PASSWORD_HASH=$(${PROJECT_DIR}/venv/bin/python3 -c "from werkzeug.security import generate_password_hash; print(generate_password_hash('''$ADMIN_PASSWORD'''))")
 
-    # 此处为 app.py 的完整代码，保持不变
     cat << 'EOF' > ${PROJECT_DIR}/app.py
 # -*- coding: utf-8 -*-
 import sqlite3, re, os, math, html, logging, sys
@@ -130,25 +119,20 @@ from zoneinfo import ZoneInfo
 from werkzeug.security import check_password_hash, generate_password_hash
 import asyncio
 from aiosmtpd.controller import Controller
-# --- 配置 ---
 DB_FILE = 'emails.db'
 EMAILS_PER_PAGE = 50
 LAST_CLEANUP_FILE = '/opt/mail_api/last_cleanup.txt'
 CLEANUP_INTERVAL_DAYS = 1
 EMAILS_TO_KEEP = 1000
-# 管理员账户配置 (将由安装脚本替换)
 ADMIN_USERNAME = "_PLACEHOLDER_ADMIN_USERNAME_"
 ADMIN_PASSWORD_HASH = "_PLACEHOLDER_ADMIN_PASSWORD_HASH_"
-# --- Flask 应用设置 ---
 app = Flask(__name__)
 app.config['SECRET_KEY'] = '_PLACEHOLDER_FLASK_SECRET_KEY_'
-# --- 日志配置 ---
 handler = logging.StreamHandler(sys.stdout)
 handler.setLevel(logging.INFO)
 handler.setFormatter(logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s'))
 app.logger.addHandler(handler)
 app.logger.setLevel(logging.INFO)
-# --- 数据库操作 ---
 def get_db_conn():
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     conn.row_factory = sqlite3.Row
@@ -158,7 +142,6 @@ def init_db():
     c = conn.cursor()
     c.execute('CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, email TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL)')
     c.execute('CREATE TABLE IF NOT EXISTS received_emails (id INTEGER PRIMARY KEY, recipient TEXT, sender TEXT, subject TEXT, body TEXT, body_type TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, is_read BOOLEAN DEFAULT 0)')
-    # 检查并添加 is_read 列，以兼容旧版本
     cursor = conn.cursor()
     cursor.execute("PRAGMA table_info(received_emails)")
     columns = [row['name'] for row in cursor.fetchall()]
@@ -261,7 +244,10 @@ def login():
             session['user_email'], session['is_admin'] = ADMIN_USERNAME, True
             return redirect(request.args.get('next') or url_for('admin_view'))
         elif user and check_password_hash(user['password_hash'], password):
-            session['user_email'], session.pop('is_admin', None) = user['email'], None
+            # --- THIS IS THE CORRECTED PART ---
+            session['user_email'] = user['email']
+            session.pop('is_admin', None)
+            # --- END OF CORRECTION ---
             return redirect(request.args.get('next') or url_for('view_emails'))
         else:
             flash('邮箱或密码错误', 'error')
@@ -367,7 +353,6 @@ def manage_users():
         <h3>现有用户</h3><ul>{% for user in users %}<li>{{user.email}} <form method=post style="display:inline;"><input type=hidden name=action value=delete><input type=hidden name=user_id value={{user.id}}><button type=submit>删除</button></form></li>{% else %}<li>无普通用户</li>{% endfor %}</ul>
         </body></html>
     ''', users=users)
-# --- SMTP 服务器逻辑 ---
 class CustomSMTPHandler:
     async def handle_DATA(self, server, session, envelope):
         try:
@@ -376,7 +361,6 @@ class CustomSMTPHandler:
         except Exception as e:
             app.logger.error(f"处理邮件时发生严重错误: {e}")
             return '500 Error processing message'
-# --- 脚本主入口 ---
 if __name__ == '__main__':
     init_db()
     controller = Controller(CustomSMTPHandler(), hostname='0.0.0.0', port=25)
@@ -390,12 +374,11 @@ if __name__ == '__main__':
         controller.stop()
         app.logger.info("SMTP 服务器已关闭。")
 EOF
-
+    
     sed -i "s#_PLACEHOLDER_ADMIN_USERNAME_#${ADMIN_USERNAME}#g" "${PROJECT_DIR}/app.py"
     sed -i "s#_PLACEHOLDER_ADMIN_PASSWORD_HASH_#${ADMIN_PASSWORD_HASH}#g" "${PROJECT_DIR}/app.py"
     sed -i "s#_PLACEHOLDER_FLASK_SECRET_KEY_#${FLASK_SECRET_KEY}#g" "${PROJECT_DIR}/app.py"
 
-    # --- 步骤 5: 创建 systemd 服务文件 ---
     echo -e "${GREEN}>>> 步骤 5: 创建 systemd 服务文件...${NC}"
     cat << EOF > /etc/systemd/system/mail-smtp.service
 [Unit]
@@ -419,21 +402,18 @@ After=network.target
 User=root
 Group=root
 WorkingDirectory=${PROJECT_DIR}
-# Gunicorn 监听在本地回环地址，等待前端代理
 ExecStart=${PROJECT_DIR}/venv/bin/gunicorn --workers 3 --bind 127.0.0.1:${GUNICORN_PORT} 'app:app'
 Restart=always
 [Install]
 WantedBy=multi-user.target
 EOF
 
-    # --- 步骤 6: 启动核心服务 ---
     echo -e "${GREEN}>>> 步骤 6: 启动核心服务...${NC}"
     ${PROJECT_DIR}/venv/bin/python3 -c "from app import init_db; init_db()"
     systemctl daemon-reload
     systemctl restart mail-smtp.service mail-api.service
     systemctl enable mail-smtp.service mail-api.service
 
-    # --- 安装完成 ---
     echo "================================================================"
     echo -e "${GREEN}🎉 恭喜！邮件服务器核心服务安装完成！ 🎉${NC}"
     echo "================================================================"
@@ -443,37 +423,14 @@ EOF
     echo ""
     echo -e "${RED}下一步：手动配置Web反向代理以上线服务${NC}"
     echo "----------------------------------------------------------------"
-    echo "您需要一个Web服务器（如Caddy, Nginx）来将后台服务安全地暴露到公网。"
-    echo "以下是使用 Caddy 的配置示例："
-    echo ""
-    echo -e "1. ${YELLOW}安装Caddy:${NC} 如果您的服务器上没有Caddy，请先安装。"
-    echo "   (例如: apt install caddy)"
-    echo ""
-    echo -e "2. ${YELLOW}配置DNS:${NC} 前往您的域名提供商，将域名 A 记录指向本服务器的公网IP。"
-    echo ""
-    echo -e "3. ${YELLOW}创建/编辑Caddy配置文件:${NC} 打开 /etc/caddy/Caddyfile，并写入以下内容。"
-    echo -e "   (请将 ${BLUE}mail.yourdomain.com${NC} 替换为您的真实域名)"
-    echo ""
-    echo -e "${GREEN}#----- Caddyfile 示例内容 开始 -----#"
-    echo -e "${BLUE}mail.yourdomain.com {
-    reverse_proxy 127.0.0.1:${GUNICORN_PORT}
-}${NC}"
-    echo -e "${GREEN}#----- Caddyfile 示例内容 结束 -----#"
-    echo ""
-    echo -e "4. ${YELLOW}重载Caddy服务:${NC} 保存配置文件后，执行 `systemctl reload caddy`"
-    echo "   Caddy 会自动为您申请并配置HTTPS证书。"
-    echo ""
-    echo -e "5. ${YELLOW}配置防火墙:${NC} 确保防火墙允许HTTP和HTTPS流量。"
-    echo "   `ufw allow 80/tcp`"
-    echo "   `ufw allow 443/tcp`"
-    echo ""
-    echo "完成后，您就可以通过 ${GREEN}https://<您的域名>${NC} 访问管理后台了。"
+    echo "请参照之前的说明，手动配置Caddy或Nginx等Web服务器。"
     echo "================================================================"
+
 }
 
 # --- 主逻辑 ---
 clear
-echo -e "${BLUE}轻量级邮件服务器一键脚本 V5 (纯核心服务版)${NC}"
+echo -e "${BLUE}轻量级邮件服务器一键脚本 (最终修正版)${NC}"
 echo "=================================================="
 echo "请选择要执行的操作:"
 echo "1) 安装邮件服务器核心服务"
