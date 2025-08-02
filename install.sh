@@ -1,8 +1,8 @@
 #!/bin/bash
 # =================================================================================
-# 轻量级邮件服务器一键安装脚本 (UI终极修正版)
+# 轻量级邮件服务器一键安装脚本 (终极版)
 #
-# 作者: 小龙女她爸
+# 作者: Gemini
 # 日期: 2025-08-02
 # =================================================================================
 
@@ -69,7 +69,7 @@ uninstall_server() {
 
 # --- 安装功能 ---
 install_server() {
-    echo -e "${GREEN}欢迎使用轻量级邮件服务器一键安装脚本 (UI终极修正版)！${NC}"
+    echo -e "${GREEN}欢迎使用轻量级邮件服务器一键安装脚本 (响应式UI终极版)！${NC}"
     
     # --- 收集用户信息 ---
     read -p "请输入您想为本系统命名的标题 (例如: 我的私人邮箱): " SYSTEM_TITLE
@@ -318,27 +318,29 @@ def render_email_list_page(emails_data, page, total_pages, total_emails, search_
             'recipient': item['recipient'], 'sender': parseaddr(item['sender'] or "")[1]
         })
     return render_template_string('''
-        <!DOCTYPE html><html><head><title>{{title}} - {{SYSTEM_TITLE}}</title><style>
+        <!DOCTYPE html><html><head><title>{{title}} - {{SYSTEM_TITLE}}</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
             body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; background-color: #f8f9fa; font-size: 14px; }
-            .container { max-width: 1300px; margin: 0 auto; padding: 2em; }
-            table { border-collapse: collapse; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.05); background-color: #fff; margin-top: 1.5em; table-layout: fixed; border: 1px solid #dee2e6; }
-            th, td { padding: 12px 15px; vertical-align: middle; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-bottom: 1px solid #dee2e6; border-right: 1px solid #dee2e6;}
+            .container { max-width: 95%; margin: 0 auto; padding: 1em; }
+            table { border-collapse: collapse; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.05); background-color: #fff; margin-top: 1.5em; border: 1px solid #dee2e6; }
+            th, td { padding: 12px 15px; vertical-align: middle; border-bottom: 1px solid #dee2e6; border-right: 1px solid #dee2e6; word-break: break-all; }
             th:last-child, td:last-child { border-right: none; }
             tr.unread { font-weight: bold; background-color: #fffaf0; }
             tr:hover { background-color: #f1f3f5; }
             th { background-color: #4CAF50; color: white; text-transform: uppercase; font-size: 0.85em; letter-spacing: 0.05em; text-align: center; }
-            .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5em; }
+            .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5em; flex-wrap: wrap; gap: 1em;}
             .top-bar h2 { margin: 0; color: #333; font-size: 1.5em; }
             .top-bar .user-actions { display: flex; gap: 10px; }
-            .btn { text-decoration: none; display: inline-block; padding: 8px 15px; border: 1px solid transparent; border-radius: 4px; color: white; cursor: pointer; font-size: 0.9em; transition: background-color 0.2s; }
+            .btn { text-decoration: none; display: inline-block; padding: 8px 15px; border: 1px solid transparent; border-radius: 4px; color: white; cursor: pointer; font-size: 0.9em; transition: background-color 0.2s; white-space: nowrap; }
             .btn-primary { background-color: #007bff; border-color: #007bff; }
             .btn-primary:hover { background-color: #0056b3; }
             .btn-secondary { background-color: #6c757d; border-color: #6c757d; }
             .btn-danger { background-color: #dc3545; border-color: #dc3545; }
-            .controls { display: flex; justify-content: space-between; align-items: center; padding-bottom: 1.5em; border-bottom: 1px solid #dee2e6; }
-            .controls .bulk-actions { display: flex; align-items: center; gap: 10px; }
+            .controls { display: flex; justify-content: space-between; align-items: center; padding-bottom: 1.5em; border-bottom: 1px solid #dee2e6; flex-wrap: wrap; gap: 1em;}
+            .controls .bulk-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
             .search-form { display: flex; gap: 5px; }
-            .search-form input[type="text"] { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+            .search-form input[type="text"] { padding: 8px; border: 1px solid #ccc; border-radius: 4px; min-width: 200px;}
             .pagination { margin-top: 1.5em; text-align: center; }
             .pagination a { color: #007bff; padding: 8px 12px; text-decoration: none; border: 1px solid #ddd; margin: 0 4px; border-radius: 4px; }
             .pagination a:hover { background-color: #e9ecef; }
@@ -346,7 +348,6 @@ def render_email_list_page(emails_data, page, total_pages, total_emails, search_
             a.view-link { color: #007bff; text-decoration: none; }
             a.view-link:hover { text-decoration: underline; }
             td { text-align: left; }
-            td.preview-cell { white-space: normal; word-wrap: break-word; }
         </style></head><body>
         <div class="container">
             <div class="top-bar">
@@ -384,12 +385,12 @@ def render_email_list_page(emails_data, page, total_pages, total_emails, search_
             <form id="delete-selected-form" method="POST" action="{{url_for('delete_selected_emails')}}">
             <table>
                 <thead><tr>
-                    <th style="width: 3%;"><input type="checkbox" onclick="toggleAllCheckboxes(this);" {% if not is_admin_view %}style="display:none;"{% endif %}></th>
-                    <th style="width: 15%;">时间 (北京)</th>
-                    <th style="width: 20%;">主题</th>
-                    <th style="width: 35%;">内容预览</th>
-                    <th style="width: 13%;">收件人</th>
-                    <th style="width: 14%;">发件人</th>
+                    <th style="width: 3%; min-width: 40px;"><input type="checkbox" onclick="toggleAllCheckboxes(this);" {% if not is_admin_view %}style="display:none;"{% endif %}></th>
+                    <th style="width: 15%; min-width: 160px;">时间 (北京)</th>
+                    <th style="width: 20%; min-width: 150px;">主题</th>
+                    <th style="width: 35%; min-width: 200px;">内容预览</th>
+                    <th style="width: 13%; min-width: 120px;">收件人</th>
+                    <th style="width: 14%; min-width: 120px;">发件人</th>
                 </tr></thead>
                 <tbody>
                 {% for mail in mails %}
@@ -397,7 +398,7 @@ def render_email_list_page(emails_data, page, total_pages, total_emails, search_
                     <td style="text-align: center;"><input type="checkbox" name="selected_ids" value="{{mail.id}}" {% if not is_admin_view %}style="display:none;"{% endif %}></td>
                     <td>{{mail.bjt_str}}</td>
                     <td>{{mail.subject|e}} <a href="{{ url_for('view_email_token_detail' if token_view_context else 'view_email_detail', email_id=mail.id, token=token_view_context.token if token_view_context) }}" target="_blank" class="view-link" title="新窗口打开">↳</a></td>
-                    <td class="preview-cell">
+                    <td>
                         {% if mail.is_code %}
                             <span class="preview-code">{{mail.preview_text|e}}</span>
                         {% else %}
@@ -700,7 +701,7 @@ EOF
 
 # --- 主逻辑 ---
 clear
-echo -e "${BLUE}轻量级邮件服务器一键脚本 (UI终极修正版)${NC}"
+echo -e "${BLUE}轻量级邮件服务器一键脚本${NC}"
 echo "=============================================================="
 echo "请选择要执行的操作:"
 echo "1) 安装邮件服务器核心服务"
