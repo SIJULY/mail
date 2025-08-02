@@ -1,6 +1,6 @@
 #!/bin/bash
 # =================================================================================
-# 轻量级邮件服务器一键安装脚本 (终极版V)
+# 轻量级邮件服务器一键安装脚本 (智能API终极版)
 #
 # 作者: 小龙女她爸
 # 日期: 2025-08-02
@@ -69,7 +69,7 @@ uninstall_server() {
 
 # --- 安装功能 ---
 install_server() {
-    echo -e "${GREEN}欢迎使用轻量级邮件服务器一键安装脚本 (AWS兼容终极版)！${NC}"
+    echo -e "${GREEN}欢迎使用轻量级邮件服务器一键安装脚本 (智能API终极版)！${NC}"
     
     # --- 收集用户信息 ---
     read -p "请输入您想为本系统命名的标题 (例如: 我的私人邮箱): " SYSTEM_TITLE
@@ -127,7 +127,6 @@ install_server() {
     # --- 步骤 4: 写入核心应用代码 ---
     echo -e "${GREEN}>>> 步骤 4: 写入核心应用代码 (app.py)...${NC}"
     ADMIN_PASSWORD_HASH=$(${PROJECT_DIR}/venv/bin/python3 -c "from werkzeug.security import generate_password_hash; print(generate_password_hash('''$ADMIN_PASSWORD'''))")
-    # This app.py content is from the "直达正文终极版" and remains correct.
     cat << 'EOF' > ${PROJECT_DIR}/app.py
 # -*- coding: utf-8 -*-
 import sqlite3, re, os, math, html, logging, sys
@@ -431,7 +430,7 @@ def render_email_list_page(emails_data, page, total_pages, total_emails, search_
         <script>
             function toggleAllCheckboxes(source) {
                 var form = document.getElementById('delete-selected-form');
-                var checkboxes = form.getElementsByName('selected_ids');
+                var checkboxes = document.getElementsByName('selected_ids');
                 for(var i=0; i < checkboxes.length; i++) {
                     checkboxes[i].checked = source.checked;
                 }
@@ -480,29 +479,32 @@ def base_view_logic(is_admin_view, mark_as_read=True, recipient_override=None):
 
     conn.close()
     return render_email_list_page(emails_data, page, total_pages, total_emails, search_query, is_admin_view, token_view_context=token_context)
+# =================================================================================
+# === 新的智能API逻辑 START ===
+# =================================================================================
 @app.route('/Mail')
 def view_mail_by_token():
     token = request.args.get('token')
     recipient_mail = request.args.get('mail')
-    if token != SPECIAL_VIEW_TOKEN:
-        return "无效的Token", 403
+    if not token or token != SPECIAL_VIEW_TOKEN:
+        return jsonify({"error": "Invalid token"}), 401
     if not recipient_mail:
-        return "必须提供 'mail' 参数", 400
+        return jsonify({"error": "mail parameter is missing"}), 400
     
+    subject_keywords = ["verify your email address", "验证您的电子邮件地址", "e メールアドレスを検証してください", "verification code"]
     conn = get_db_conn()
-    email = conn.execute("SELECT * FROM received_emails WHERE recipient = ? ORDER BY id DESC LIMIT 1", (recipient_mail,)).fetchone()
-    conn.close()
-
-    if not email:
-        return render_template_string('<!DOCTYPE html><html><head><title>无邮件</title><body style="font-family: sans-serif; text-align: center; padding-top: 5em;"><h1>收件箱 ({{recipient}})</h1><p>此邮箱没有任何邮件。</p></body></html>', recipient=recipient_mail)
-
-    body_content = email['body'] or ''
-    if 'text/html' in (email['body_type'] or ''):
-        email_display = f'<iframe srcdoc="{html.escape(body_content)}" style="width:100%;height:calc(100vh - 20px);border:none;"></iframe>'
-    else:
-        email_display = f'<pre style="white-space:pre-wrap;word-wrap:break-word;">{escape(body_content)}</pre>'
-    
-    return Response(email_display, mimetype="text/html; charset=utf-8")
+    try:
+        messages = conn.execute("SELECT id, subject, body, body_type FROM received_emails WHERE recipient = ? ORDER BY id DESC LIMIT 50", (recipient_mail,)).fetchall()
+        for msg in messages:
+            subject = msg['subject'] or ""
+            if any(keyword in subject.lower() for keyword in subject_keywords):
+                return Response(msg['body'], mimetype=f"{msg['body_type'] or 'text/html'}; charset=utf-8")
+        return jsonify({"error": "Verification email not found"}), 404
+    finally:
+        if conn: conn.close()
+# =================================================================================
+# === 新的智能API逻辑 END ===
+# =================================================================================
 @app.route('/delete_selected_emails', methods=['POST'])
 @login_required
 @admin_required
@@ -510,22 +512,26 @@ def delete_selected_emails():
     selected_ids = request.form.getlist('selected_ids')
     if selected_ids:
         conn = get_db_conn()
-        placeholders = ','.join('?' for _ in selected_ids)
-        query = f"DELETE FROM received_emails WHERE id IN ({placeholders})"
-        conn.execute(query, selected_ids)
-        conn.commit()
-        conn.close()
-    return redirect(request.referrer or url_for('admin_view'))
+        try:
+            placeholders = ','.join('?' for _ in selected_ids)
+            query = f"DELETE FROM received_emails WHERE id IN ({placeholders})"
+            conn.execute(query, selected_ids)
+            conn.commit()
+        finally:
+            if conn: conn.close()
+    return redirect(request.referrer or url_for('view_emails'))
 
 @app.route('/delete_all_emails', methods=['POST'])
 @login_required
 @admin_required
 def delete_all_emails():
     conn = get_db_conn()
-    conn.execute("DELETE FROM received_emails")
-    conn.commit()
-    conn.close()
-    return redirect(url_for('admin_view'))
+    try:
+        conn.execute("DELETE FROM received_emails")
+        conn.commit()
+    finally:
+        if conn: conn.close()
+    return redirect(url_for('view_emails'))
 @app.route('/view_email/<int:email_id>')
 @login_required
 def view_email_detail(email_id):
@@ -721,7 +727,7 @@ WantedBy=multi-user.target
 
 # --- 主逻辑 ---
 clear
-echo -e "${BLUE}轻量级邮件服务器一键脚本 (终极版V)${NC}"
+echo -e "${BLUE}轻量级邮件服务器一键脚本 (智能API终极版)${NC}"
 echo "=============================================================="
 echo "请选择要执行的操作:"
 echo "1) 安装邮件服务器核心服务"
