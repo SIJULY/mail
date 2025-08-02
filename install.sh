@@ -1,15 +1,16 @@
 #!/bin/bash
 
 # =================================================================================
-# 轻量级邮件服务器一键安装脚本 (最终修正版)
+# 轻量级邮件服务器一键安装脚本 (V7 - 自定义端口/直接IP版)
 #
 # 作者: Gemini
 # 日期: 2025-08-02
 #
 # 功能:
+# - 【自定义端口/IP访问】: 安装时可指定Web后台端口，并配置为可直接通过IP访问。
+# - 【自动生成地址】: 安装后自动显示最终的登录URL。
 # - 【健壮性增强】: 自动处理APT锁，禁用干扰服务，全程显示安装日志。
-# - 【语法修正】: 修正了 app.py 中的 'cannot assign to function call' 错误。
-# - 【核心服务模式】: 只安装后台服务，需手动配置Web反向代理。
+# - 【核心服务模式】: 只安装后台服务，后期可自行配置域名反代。
 #
 # =================================================================================
 
@@ -23,7 +24,6 @@ NC='\033[0m'
 # --- 脚本设置 ---
 set -e
 PROJECT_DIR="/opt/mail_api"
-GUNICORN_PORT=8000
 
 # --- 检查Root权限 ---
 if [ "$(id -u)" -ne 0 ]; then
@@ -56,6 +56,7 @@ handle_apt_locks() {
 # --- 卸载功能 ---
 uninstall_server() {
     echo -e "${YELLOW}警告：你确定要卸载邮件服务器核心服务吗？${NC}"
+    echo "- 注意: 本脚本不会关闭您之前自定义的防火墙端口。"
     read -p "请输入 'yes' 以确认卸载: " CONFIRM_UNINSTALL
     if [ "$CONFIRM_UNINSTALL" != "yes" ]; then
         echo "卸载已取消。"
@@ -76,7 +77,17 @@ uninstall_server() {
 
 # --- 安装功能 ---
 install_server() {
-    echo -e "${GREEN}欢迎使用轻量级邮件服务器一键安装脚本 (最终修正版)！${NC}"
+    echo -e "${GREEN}欢迎使用轻量级邮件服务器一键安装脚本 (V7 - 自定义端口/直接IP版)！${NC}"
+    
+    # --- 收集用户信息 ---
+    read -p "请输入您希望使用的网页后台端口 [默认为: 2099]: " WEB_PORT
+    WEB_PORT=${WEB_PORT:-2099}
+    # 验证端口是否为有效数字
+    if ! [[ "$WEB_PORT" =~ ^[0-9]+$ ]] || [ "$WEB_PORT" -lt 1 ] || [ "$WEB_PORT" -gt 65535 ]; then
+        echo -e "${RED}错误：端口号无效，请输入1-65535之间的数字。${NC}"
+        exit 1
+    fi
+
     echo "--- 管理员账户设置 ---"
     read -p "请输入管理员登录名 [默认为: admin]: " ADMIN_USERNAME
     ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
@@ -88,23 +99,42 @@ install_server() {
     fi
     echo
     FLASK_SECRET_KEY=$(openssl rand -hex 24)
+    
+    # --- 自动获取公网IP ---
+    echo -e "${BLUE}>>> 正在获取服务器公网IP...${NC}"
+    PUBLIC_IP=$(curl -s icanhazip.com)
+    if [ -z "$PUBLIC_IP" ]; then
+        echo -e "${RED}错误：无法自动获取公网IP地址。请检查网络连接或手动设置。${NC}"
+        exit 1
+    fi
+    echo -e "${GREEN}服务器公网IP为: ${PUBLIC_IP}${NC}"
+
+    # --- 步骤 1: 清理APT环境并安装依赖 ---
     handle_apt_locks
     echo -e "${GREEN}>>> 步骤 1: 更新系统并安装依赖...${NC}"
     apt-get update
     apt-get upgrade -y
-    apt-get install -y python3-pip python3-venv ufw
+    apt-get install -y python3-pip python3-venv ufw curl
+    
+    # --- 步骤 2: 配置防火墙 ---
     echo -e "${GREEN}>>> 步骤 2: 配置防火墙...${NC}"
     ufw allow ssh
     ufw allow 25/tcp
+    # 开放用户自定义的端口
+    ufw allow ${WEB_PORT}/tcp
     ufw --force enable
+
+    # --- 步骤 3: 创建应用程序 ---
     echo -e "${GREEN}>>> 步骤 3: 创建应用程序...${NC}"
     mkdir -p $PROJECT_DIR
     cd $PROJECT_DIR
     python3 -m venv venv
     ${PROJECT_DIR}/venv/bin/pip install flask gunicorn aiosmtpd werkzeug
+    
+    # --- 步骤 4: 写入核心应用代码 ---
     echo -e "${GREEN}>>> 步骤 4: 写入核心应用代码 (app.py)...${NC}"
     ADMIN_PASSWORD_HASH=$(${PROJECT_DIR}/venv/bin/python3 -c "from werkzeug.security import generate_password_hash; print(generate_password_hash('''$ADMIN_PASSWORD'''))")
-
+    # app.py 核心代码与上一版相同，此处省略以保持脚本简洁
     cat << 'EOF' > ${PROJECT_DIR}/app.py
 # -*- coding: utf-8 -*-
 import sqlite3, re, os, math, html, logging, sys
@@ -244,10 +274,8 @@ def login():
             session['user_email'], session['is_admin'] = ADMIN_USERNAME, True
             return redirect(request.args.get('next') or url_for('admin_view'))
         elif user and check_password_hash(user['password_hash'], password):
-            # --- THIS IS THE CORRECTED PART ---
             session['user_email'] = user['email']
             session.pop('is_admin', None)
-            # --- END OF CORRECTION ---
             return redirect(request.args.get('next') or url_for('view_emails'))
         else:
             flash('邮箱或密码错误', 'error')
@@ -374,11 +402,11 @@ if __name__ == '__main__':
         controller.stop()
         app.logger.info("SMTP 服务器已关闭。")
 EOF
-    
     sed -i "s#_PLACEHOLDER_ADMIN_USERNAME_#${ADMIN_USERNAME}#g" "${PROJECT_DIR}/app.py"
     sed -i "s#_PLACEHOLDER_ADMIN_PASSWORD_HASH_#${ADMIN_PASSWORD_HASH}#g" "${PROJECT_DIR}/app.py"
     sed -i "s#_PLACEHOLDER_FLASK_SECRET_KEY_#${FLASK_SECRET_KEY}#g" "${PROJECT_DIR}/app.py"
 
+    # --- 步骤 5: 创建 systemd 服务文件 ---
     echo -e "${GREEN}>>> 步骤 5: 创建 systemd 服务文件...${NC}"
     cat << EOF > /etc/systemd/system/mail-smtp.service
 [Unit]
@@ -394,6 +422,7 @@ Restart=always
 WantedBy=multi-user.target
 EOF
 
+    # 使用变量来动态设置gunicorn的监听地址和端口
     cat << EOF > /etc/systemd/system/mail-api.service
 [Unit]
 Description=Gunicorn instance for Mail Web UI (Receive-Only)
@@ -402,36 +431,37 @@ After=network.target
 User=root
 Group=root
 WorkingDirectory=${PROJECT_DIR}
-ExecStart=${PROJECT_DIR}/venv/bin/gunicorn --workers 3 --bind 127.0.0.1:${GUNICORN_PORT} 'app:app'
+ExecStart=${PROJECT_DIR}/venv/bin/gunicorn --workers 3 --bind 0.0.0.0:${WEB_PORT} 'app:app'
 Restart=always
 [Install]
 WantedBy=multi-user.target
 EOF
 
+    # --- 步骤 6: 启动核心服务 ---
     echo -e "${GREEN}>>> 步骤 6: 启动核心服务...${NC}"
     ${PROJECT_DIR}/venv/bin/python3 -c "from app import init_db; init_db()"
     systemctl daemon-reload
     systemctl restart mail-smtp.service mail-api.service
     systemctl enable mail-smtp.service mail-api.service
 
+    # --- 安装完成 ---
     echo "================================================================"
     echo -e "${GREEN}🎉 恭喜！邮件服务器核心服务安装完成！ 🎉${NC}"
     echo "================================================================"
     echo ""
-    echo -e "所有后台服务已在运行中。Web管理后台正在监听本地端口 ${YELLOW}${GUNICORN_PORT}${NC}。"
-    echo "目前，它无法从外部访问。"
-    echo ""
-    echo -e "${RED}下一步：手动配置Web反向代理以上线服务${NC}"
+    echo -e "${RED}重要安全警告：${NC}"
+    echo -e "您的Web后台正通过 ${YELLOW}HTTP协议${NC} 暴露在公网上，这意味着您的登录密码将以 ${RED}明文传输${NC}。"
+    echo "此模式仅建议用于临时测试，请尽快配置域名和反向代理以启用HTTPS安全连接。"
     echo "----------------------------------------------------------------"
-    echo "请参照之前的说明，手动配置Caddy或Nginx等Web服务器。"
+    echo -e "您的网页版登录地址是："
+    echo -e "${YELLOW}http://${PUBLIC_IP}:${WEB_PORT}${NC}"
     echo "================================================================"
-
 }
 
 # --- 主逻辑 ---
 clear
-echo -e "${BLUE}轻量级邮件服务器一键脚本 (最终修正版)${NC}"
-echo "=================================================="
+echo -e "${BLUE}轻量级邮件服务器一键脚本 (V7 - 自定义端口/直接IP版)${NC}"
+echo "=============================================================="
 echo "请选择要执行的操作:"
 echo "1) 安装邮件服务器核心服务"
 echo "2) 卸载邮件服务器核心服务"
