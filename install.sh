@@ -1,6 +1,6 @@
 #!/bin/bash
 # =================================================================================
-# 轻量级邮件服务器一键安装脚本 (功能美化旗舰版）
+# 轻量级邮件服务器一键安装脚本 (功能美化旗舰版 ) 
 #
 # 作者: 小龙女她爸
 # 日期: 2025-08-02
@@ -149,7 +149,6 @@ EMAILS_TO_KEEP = 1000
 ADMIN_USERNAME = "_PLACEHOLDER_ADMIN_USERNAME_"
 ADMIN_PASSWORD_HASH = "_PLACEHOLDER_ADMIN_PASSWORD_HASH_"
 SYSTEM_TITLE = "_PLACEHOLDER_SYSTEM_TITLE_"
-# --- TOKEN ---
 SPECIAL_VIEW_TOKEN = "2088"
 app = Flask(__name__)
 app.config['SECRET_KEY'] = '_PLACEHOLDER_FLASK_SECRET_KEY_'
@@ -300,10 +299,10 @@ def logout():
     session.clear(); return redirect(url_for('login'))
 def render_email_list_page(emails_data, page, total_pages, total_emails, search_query, is_admin_view, token_view_context=None):
     if token_view_context:
-        view_endpoint = 'view_mail_by_token'
+        endpoint = 'view_mail_by_token'
         title_text = f"收件箱 ({token_view_context['mail']}) - 共 {total_emails} 封"
     else:
-        view_endpoint = 'admin_view' if is_admin_view else 'view_emails'
+        endpoint = 'admin_view' if is_admin_view else 'view_emails'
         title_text = f"管理员视图 (共 {total_emails} 封)" if is_admin_view else f"收件箱 ({session.get('user_email', '')} - 共 {total_emails} 封)"
     
     processed_emails = []
@@ -366,7 +365,7 @@ def render_email_list_page(emails_data, page, total_pages, total_emails, search_
                     </form>
                     {% endif %}
                 </div>
-                <form method="get" class="search-form" action="{{ url_for(view_endpoint) }}">
+                <form method="get" class="search-form" action="{{ url_for(endpoint) }}">
                     <input type="text" name="search" value="{{search_query|e}}" placeholder="搜索...">
                     {% if token_view_context %}
                     <input type="hidden" name="token" value="{{ token_view_context.token }}">
@@ -413,7 +412,7 @@ def render_email_list_page(emails_data, page, total_pages, total_emails, search_
                 {% if page > 1 %}
                     {% set pagination_params = {'page': page-1, 'search': search_query} %}
                     {% if token_view_context %}{% set _ = pagination_params.update({'token': token_view_context.token, 'mail': token_view_context.mail}) %}{% endif %}
-                    <a href="{{url_for(view_endpoint, **pagination_params)}}">&laquo; 上一页</a>
+                    <a href="{{url_for(endpoint, **pagination_params)}}">&laquo; 上一页</a>
                 {% endif %}
                 
                 <span> Page {{page}} / {{total_pages}} </span>
@@ -421,7 +420,7 @@ def render_email_list_page(emails_data, page, total_pages, total_emails, search_
                 {% if page < total_pages %}
                     {% set pagination_params = {'page': page + 1, 'search': search_query} %}
                     {% if token_view_context %}{% set _ = pagination_params.update({'token': token_view_context.token, 'mail': token_view_context.mail}) %}{% endif %}
-                    <a href="{{url_for(view_endpoint, **pagination_params)}}">下一页 &raquo;</a>
+                    <a href="{{url_for(endpoint, **pagination_params)}}">下一页 &raquo;</a>
                 {% endif %}
             </div>
         </div>
@@ -435,7 +434,7 @@ def render_email_list_page(emails_data, page, total_pages, total_emails, search_
             }
         </script>
         </body></html>
-    ''', title=title_text, mails=processed_emails, page=page, total_pages=total_pages, search_query=search_query, is_admin_view=is_admin_view, endpoint=view_endpoint, SYSTEM_TITLE=SYSTEM_TITLE, token_view_context=token_view_context)
+    ''', title=title_text, mails=processed_emails, page=page, total_pages=total_pages, search_query=search_query, is_admin_view=is_admin_view, endpoint=endpoint, SYSTEM_TITLE=SYSTEM_TITLE, token_view_context=token_view_context)
 @app.route('/view')
 @login_required
 def view_emails():
@@ -452,7 +451,7 @@ def base_view_logic(is_admin_view, mark_as_read=True, recipient_override=None):
     where_clauses, params = [], []
     token_context = None
 
-    if recipient_override: # 彩蛋功能
+    if recipient_override: #API
         is_admin_view = False
         where_clauses.append("recipient = ?"); params.append(recipient_override)
         if search_query: where_clauses.append("(subject LIKE ? OR sender LIKE ?)"); params.extend([f"%{search_query}%"]*2)
@@ -477,7 +476,6 @@ def base_view_logic(is_admin_view, mark_as_read=True, recipient_override=None):
 
     conn.close()
     return render_email_list_page(emails_data, page, total_pages, total_emails, search_query, is_admin_view, token_view_context=token_context)
-# --- 功能路由 ---
 @app.route('/Mail')
 def view_mail_by_token():
     token = request.args.get('token')
@@ -486,7 +484,6 @@ def view_mail_by_token():
         return "无效的Token", 403
     if not recipient_mail:
         return "必须提供 'mail' 参数", 400
-    # 调用核心逻辑，但指定不标记为已读，并覆盖收件人
     return base_view_logic(is_admin_view=False, mark_as_read=False, recipient_override=recipient_mail)
 @app.route('/delete_selected_emails', methods=['POST'])
 @login_required
@@ -524,7 +521,6 @@ def view_email_detail(email_id):
     else:
         email = conn.execute("SELECT * FROM received_emails WHERE id = ? AND recipient = ?", (email_id, session['user_email'])).fetchone()
     if not email: conn.close(); return "邮件未找到或无权查看", 404
-    # 登录查看时，标记为已读
     if not email['is_read']:
         conn.execute("UPDATE received_emails SET is_read = 1 WHERE id = ?", (email_id,)); conn.commit()
     conn.close()
@@ -535,7 +531,6 @@ def view_email_detail(email_id):
     else:
         email_display = f'<pre style="white-space:pre-wrap;word-wrap:break-word;">{escape(body_content)}</pre>'
     return Response(email_display, mimetype="text/html; charset=utf-8")
-# --- 查看邮件详情的路由 ---
 @app.route('/view_email_token/<int:email_id>')
 def view_email_token_detail(email_id):
     token = request.args.get('token')
@@ -546,7 +541,6 @@ def view_email_token_detail(email_id):
     conn.close()
     if not email: return "邮件未找到", 404
     
-    # Token查看不改变已读状态
     body_content = email['body'] or ''
     if 'text/html' in (email['body_type'] or ''):
         email_display = f'<iframe srcdoc="{html.escape(body_content)}" style="width:100%;height:calc(100vh - 20px);border:none;"></iframe>'
@@ -701,14 +695,14 @@ EOF
     echo -e "您的网页版登录地址是："
     echo -e "${YELLOW}http://${PUBLIC_IP}:${WEB_PORT}${NC}"
     echo ""
-    echo -e "您新增的彩蛋查看地址格式为 (注意替换{}中的内容):"
+    echo -e "邮件查看地址格式为 (注意替换{}中的内容):"
     echo -e "${YELLOW}http://${PUBLIC_IP}:${WEB_PORT}/Mail?token=2088&mail={收件人邮箱地址}${NC}"
     echo "================================================================"
 }
 
 # --- 主逻辑 ---
 clear
-echo -e "${BLUE} 轻量级邮件服务器一键安装脚本 (功能美化旗舰版）${NC}"
+echo -e "${BLUE}轻量级邮件服务器一键安装脚本 (功能美化旗舰版 ) ${NC}"
 echo "=============================================================="
 echo "请选择要执行的操作:"
 echo "1) 安装邮件服务器核心服务"
