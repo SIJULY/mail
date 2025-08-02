@@ -1,24 +1,22 @@
 #!/bin/bash
 
 # =================================================================================
-# 轻量级邮件服务器一键安装脚本 (V4 - DNS解耦/Caddy/纯接收版)
+# 轻量级邮件服务器一键安装脚本 (V5 - 纯核心服务版)
 #
 # 作者: Gemini
-# 日期: 2025-08-03
+# 日期: 2025-08-02
 #
 # 功能:
-# - DNS解耦: 允许先安装后解析，安装过程不再依赖域名实时解析。
-# - 使用 Caddy 自动处理反向代理和 HTTPS 证书。
+# - 【核心服务模式】: 只安装后台服务，不处理任何域名或Web服务器配置。
 # - 提供一键安装与一键卸载功能。
 # - 多用户系统 (管理员 + 普通用户)。
-# - 增强的Web界面 (分页、搜索、预览、验证码高亮)。
-# - 自动清理旧邮件。
-# - 使用哈希存储密码，提升安全性。
+# - Web界面管理后台 (需手动配置反向代理)。
+# - 自动清理旧邮件，使用哈希存储密码。
 # - 纯接收邮件，无任何发送/回复功能。
 #
 # 使用方法:
-# 1. chmod +x install_mail_server_v4.sh
-# 2. ./install_mail_server_v4.sh
+# 1. chmod +x install_mail_server_v5.sh
+# 2. ./install_mail_server_v5.sh
 # =================================================================================
 
 # --- 颜色定义 ---
@@ -32,7 +30,6 @@ NC='\033[0m'
 set -e
 PROJECT_DIR="/opt/mail_api"
 GUNICORN_PORT=8000
-CADDYFILE_PATH="/etc/caddy/Caddyfile"
 
 # --- 检查Root权限 ---
 if [ "$(id -u)" -ne 0 ]; then
@@ -42,14 +39,13 @@ fi
 
 # --- 卸载功能 ---
 uninstall_server() {
-    echo -e "${YELLOW}警告：你确定要卸载邮件服务器吗？${NC}"
+    echo -e "${YELLOW}警告：你确定要卸载邮件服务器核心服务吗？${NC}"
     echo -e "${RED}此操作将执行以下操作:${NC}"
-    echo "- 停止并禁用 mail-smtp, mail-api, caddy 服务"
+    echo "- 停止并禁用 mail-smtp, mail-api 服务"
     echo "- 删除 systemd 服务文件"
-    echo "- 删除防火墙规则 (25, 80, 443)"
     echo "- 删除整个应用程序目录 (${PROJECT_DIR})"
-    echo "- 卸载 Caddy 并删除其配置文件 (${CADDYFILE_PATH})"
     echo "- ${RED}所有已接收的邮件和用户数据都将被永久删除！${NC}"
+    echo "- 注意: 本脚本不会卸载您手动安装的Caddy等其他软件。"
     read -p "请输入 'yes' 以确认卸载: " CONFIRM_UNINSTALL
     if [ "$CONFIRM_UNINSTALL" != "yes" ]; then
         echo "卸载已取消。"
@@ -57,8 +53,8 @@ uninstall_server() {
     fi
 
     echo -e "${BLUE}>>> 正在停止服务...${NC}"
-    systemctl stop mail-smtp.service mail-api.service caddy 2>/dev/null || true
-    systemctl disable mail-smtp.service mail-api.service caddy 2>/dev/null || true
+    systemctl stop mail-smtp.service mail-api.service 2>/dev/null || true
+    systemctl disable mail-smtp.service mail-api.service 2>/dev/null || true
 
     echo -e "${BLUE}>>> 正在删除服务文件...${NC}"
     rm -f /etc/systemd/system/mail-smtp.service
@@ -67,45 +63,20 @@ uninstall_server() {
     echo -e "${BLUE}>>> 正在删除应用程序目录...${NC}"
     rm -rf ${PROJECT_DIR}
 
-    echo -e "${BLUE}>>> 正在卸载 Caddy 并删除配置文件...${NC}"
-    rm -f ${CADDYFILE_PATH}
-    # 使用 apt purge 来确保配置文件也被移除
-    DEBIAN_FRONTEND=noninteractive apt-get purge -y caddy > /dev/null
-
-    echo -e "${BLUE}>>> 正在更新防火墙规则...${NC}"
-    ufw delete allow 25/tcp > /dev/null
-    ufw delete allow 80/tcp > /dev/null
-    ufw delete allow 443/tcp > /dev/null
-    ufw reload > /dev/null
-
-    # 清理 Caddy 的 apt 源
-    rm -f /etc/apt/sources.list.d/caddy-stable.list
-
     systemctl daemon-reload
 
-    echo -e "${GREEN}✅ 邮件服务器已成功卸载。${NC}"
+    echo -e "${GREEN}✅ 邮件服务器核心服务已成功卸载。${NC}"
     exit 0
 }
 
 # --- 安装功能 ---
 install_server() {
     # --- 欢迎与信息收集 ---
-    echo -e "${GREEN}欢迎使用轻量级邮件服务器一键安装脚本 (V4 - DNS解耦版)！${NC}"
+    echo -e "${GREEN}欢迎使用轻量级邮件服务器一键安装脚本 (V5 - 纯核心服务版)！${NC}"
     echo "------------------------------------------------------------------"
-    echo -e "${YELLOW}本脚本允许您先完成软件安装，之后再自行处理域名解析和上线。${NC}"
+    echo -e "${YELLOW}本脚本仅安装后台服务，您需要在安装后手动配置Web反向代理。${NC}"
     echo "------------------------------------------------------------------"
-
-    read -p "请输入您【计划】使用的邮件服务器域名 (例如: mail.yourdomain.com): " MAIL_HOSTNAME
-    if [ -z "$MAIL_HOSTNAME" ]; then
-        echo -e "${RED}错误：邮件服务器域名不能为空。${NC}"
-        exit 1
-    fi
-    if ! [[ "$MAIL_HOSTNAME" =~ ^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
-        echo -e "${RED}错误：域名格式不正确。${NC}"
-        exit 1
-    fi
-
-    echo
+    
     echo "--- 管理员账户设置 ---"
     read -p "请输入管理员登录名 [默认为: admin]: " ADMIN_USERNAME
     ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
@@ -122,32 +93,15 @@ install_server() {
 
     # --- 步骤 1: 更新系统并安装依赖 ---
     echo -e "${GREEN}>>> 步骤 1: 更新系统并安装依赖...${NC}"
-    echo -e "${BLUE}本脚本将安装以下核心依赖:${NC}"
-    echo "- python3-pip, python3-venv, ufw, curl, debian-keyring, etc."
-    echo "- caddy: 高性能、自动HTTPS的Web服务器"
-    echo ""
-    read -p "按回车键继续..."
-
     apt-get update > /dev/null
     apt-get upgrade -y > /dev/null
-    apt-get install -y python3-pip python3-venv ufw curl debian-keyring debian-archive-keyring apt-transport-https > /dev/null
-
-    echo -e "${GREEN}>>> 正在安装 Caddy...${NC}"
-    if ! command -v caddy &> /dev/null; then
-        curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg > /dev/null
-        curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list > /dev/null
-        apt-get update > /dev/null
-        apt-get install -y caddy > /dev/null
-    else
-        echo -e "${YELLOW}Caddy 已安装，跳过。${NC}"
-    fi
+    apt-get install -y python3-pip python3-venv ufw > /dev/null
 
     # --- 步骤 2: 配置防火墙 ---
     echo -e "${GREEN}>>> 步骤 2: 配置防火墙...${NC}"
     ufw allow ssh > /dev/null
     ufw allow 25/tcp > /dev/null
-    ufw allow 80/tcp > /dev/null
-    ufw allow 443/tcp > /dev/null
+    # Web端口(80, 443)不再由本脚本管理，由您手动配置反代时自行处理
     ufw --force enable
 
     # --- 步骤 3: 创建应用程序和虚拟环境 ---
@@ -161,8 +115,7 @@ install_server() {
     echo -e "${GREEN}>>> 步骤 4: 生成安全配置并写入核心应用代码 (app.py)...${NC}"
     ADMIN_PASSWORD_HASH=$(${PROJECT_DIR}/venv/bin/python3 -c "from werkzeug.security import generate_password_hash; print(generate_password_hash('''$ADMIN_PASSWORD'''))")
 
-    # 省略 app.py 的巨大代码块以保持可读性，内容与上一版完全相同
-    # ... 此处假设 app.py 的内容已被正确写入 ...
+    # 此处为 app.py 的完整代码，保持不变
     cat << 'EOF' > ${PROJECT_DIR}/app.py
 # -*- coding: utf-8 -*-
 import sqlite3, re, os, math, html, logging, sys
@@ -466,66 +419,65 @@ After=network.target
 User=root
 Group=root
 WorkingDirectory=${PROJECT_DIR}
+# Gunicorn 监听在本地回环地址，等待前端代理
 ExecStart=${PROJECT_DIR}/venv/bin/gunicorn --workers 3 --bind 127.0.0.1:${GUNICORN_PORT} 'app:app'
 Restart=always
 [Install]
 WantedBy=multi-user.target
 EOF
 
-    # --- 步骤 6: 创建一个空的 Caddy 配置文件 ---
-    echo -e "${GREEN}>>> 步骤 6: 创建初始 Caddy 配置文件...${NC}"
-    # 创建一个空的Caddyfile，确保Caddy服务能正常启动，但不托管任何网站
-    # 这样可以避免因DNS未解析导致安装失败
-    touch ${CADDYFILE_PATH}
-
-    # --- 步骤 7: 启动并检查所有服务 ---
-    echo -e "${GREEN}>>> 步骤 7: 启动并启用所有服务...${NC}"
+    # --- 步骤 6: 启动核心服务 ---
+    echo -e "${GREEN}>>> 步骤 6: 启动核心服务...${NC}"
     ${PROJECT_DIR}/venv/bin/python3 -c "from app import init_db; init_db()"
     systemctl daemon-reload
-    systemctl restart mail-smtp.service mail-api.service caddy
-    systemctl enable mail-smtp.service mail-api.service caddy
+    systemctl restart mail-smtp.service mail-api.service
+    systemctl enable mail-smtp.service mail-api.service
 
     # --- 安装完成 ---
     echo "================================================================"
-    echo -e "${GREEN}🎉 恭喜！邮件服务器核心软件安装完成！ 🎉${NC}"
+    echo -e "${GREEN}🎉 恭喜！邮件服务器核心服务安装完成！ 🎉${NC}"
     echo "================================================================"
     echo ""
-    echo -e "你的管理员账户是: ${YELLOW}${ADMIN_USERNAME}${NC}"
-    echo -e "你的管理员密码是: (你在安装时输入的密码)"
+    echo -e "所有后台服务已在运行中。Web管理后台正在监听本地端口 ${YELLOW}${GUNICORN_PORT}${NC}。"
+    echo "目前，它无法从外部访问。"
     echo ""
-    echo -e "${RED}下一步：请手动配置域名并上线服务${NC}"
+    echo -e "${RED}下一步：手动配置Web反向代理以上线服务${NC}"
     echo "----------------------------------------------------------------"
-    echo "服务尚未对公网开放。请按以下步骤操作："
+    echo "您需要一个Web服务器（如Caddy, Nginx）来将后台服务安全地暴露到公网。"
+    echo "以下是使用 Caddy 的配置示例："
     echo ""
-    echo -e "1. ${YELLOW}配置DNS:${NC} 前往您的域名提供商，将域名 A 记录指向本服务器的公网IP。"
-    echo -e "   您的域名: ${BLUE}${MAIL_HOSTNAME}${NC}"
+    echo -e "1. ${YELLOW}安装Caddy:${NC} 如果您的服务器上没有Caddy，请先安装。"
+    echo "   (例如: apt install caddy)"
     echo ""
-    echo -e "2. ${YELLOW}等待解析生效:${NC} 您可以使用 `ping ${MAIL_HOSTNAME}` 或在线工具检查解析是否生效。"
+    echo -e "2. ${YELLOW}配置DNS:${NC} 前往您的域名提供商，将域名 A 记录指向本服务器的公网IP。"
     echo ""
-    echo -e "3. ${YELLOW}上线服务:${NC} 当确认DNS解析生效后，登录到服务器，执行以下【单行命令】即可： "
+    echo -e "3. ${YELLOW}创建/编辑Caddy配置文件:${NC} 打开 /etc/caddy/Caddyfile，并写入以下内容。"
+    echo -e "   (请将 ${BLUE}mail.yourdomain.com${NC} 替换为您的真实域名)"
     echo ""
-    echo -e "${BLUE}echo -e '${MAIL_HOSTNAME} {\n    reverse_proxy 127.0.0.1:${GUNICORN_PORT}\n}' > ${CADDYFILE_PATH} && systemctl reload caddy${NC}"
+    echo -e "${GREEN}#----- Caddyfile 示例内容 开始 -----#"
+    echo -e "${BLUE}mail.yourdomain.com {
+    reverse_proxy 127.0.0.1:${GUNICORN_PORT}
+}${NC}"
+    echo -e "${GREEN}#----- Caddyfile 示例内容 结束 -----#"
     echo ""
-    echo "   这条命令会自动更新Caddy配置并使其生效。Caddy会自动为您申请HTTPS证书。"
+    echo -e "4. ${YELLOW}重载Caddy服务:${NC} 保存配置文件后，执行 `systemctl reload caddy`"
+    echo "   Caddy 会自动为您申请并配置HTTPS证书。"
     echo ""
-    echo "4. ${YELLOW}访问后台:${NC} 完成以上步骤后，即可通过以下链接访问您的邮件管理后台："
-    echo -e "   ${GREEN}https://${MAIL_HOSTNAME}${NC}"
-    echo "----------------------------------------------------------------"
+    echo -e "5. ${YELLOW}配置防火墙:${NC} 确保防火墙允许HTTP和HTTPS流量。"
+    echo "   `ufw allow 80/tcp`"
+    echo "   `ufw allow 443/tcp`"
     echo ""
-    echo "你可以使用以下命令来查看服务状态:"
-    echo " - SMTP 服务: systemctl status mail-smtp.service"
-    echo " - 网页服务: systemctl status mail-api.service"
-    echo " - Caddy 服务: systemctl status caddy"
+    echo "完成后，您就可以通过 ${GREEN}https://<您的域名>${NC} 访问管理后台了。"
     echo "================================================================"
 }
 
 # --- 主逻辑 ---
 clear
-echo -e "${BLUE}轻量级邮件服务器一键脚本 V4${NC}"
-echo "============================"
+echo -e "${BLUE}轻量级邮件服务器一键脚本 V5 (纯核心服务版)${NC}"
+echo "=================================================="
 echo "请选择要执行的操作:"
-echo "1) 安装邮件服务器"
-echo "2) 卸载邮件服务器"
+echo "1) 安装邮件服务器核心服务"
+echo "2) 卸载邮件服务器核心服务"
 echo ""
 read -p "请输入选项 [1-2]: " choice
 
