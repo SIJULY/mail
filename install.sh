@@ -1,6 +1,6 @@
 #!/bin/bash
 # =================================================================================
-# 轻量级邮件服务器一键安装脚本 (终极版)
+# 轻量级邮件服务器一键安装脚本 (终极版V)
 #
 # 作者: 小龙女她爸
 # 日期: 2025-08-02
@@ -69,7 +69,7 @@ uninstall_server() {
 
 # --- 安装功能 ---
 install_server() {
-    echo -e "${GREEN}欢迎使用轻量级邮件服务器一键安装脚本 (直达正文终极版)！${NC}"
+    echo -e "${GREEN}欢迎使用轻量级邮件服务器一键安装脚本 (AWS兼容终极版)！${NC}"
     
     # --- 收集用户信息 ---
     read -p "请输入您想为本系统命名的标题 (例如: 我的私人邮箱): " SYSTEM_TITLE
@@ -127,6 +127,7 @@ install_server() {
     # --- 步骤 4: 写入核心应用代码 ---
     echo -e "${GREEN}>>> 步骤 4: 写入核心应用代码 (app.py)...${NC}"
     ADMIN_PASSWORD_HASH=$(${PROJECT_DIR}/venv/bin/python3 -c "from werkzeug.security import generate_password_hash; print(generate_password_hash('''$ADMIN_PASSWORD'''))")
+    # This app.py content is from the "直达正文终极版" and remains correct.
     cat << 'EOF' > ${PROJECT_DIR}/app.py
 # -*- coding: utf-8 -*-
 import sqlite3, re, os, math, html, logging, sys
@@ -654,43 +655,48 @@ if __name__ == '__main__':
         app.logger.info("SMTP 服务器已关闭。")
 EOF
     
-    sed -i "s#_PLACEHOLDER_ADMIN_USERNAME_#${ADMIN_USERNAME}#g" "${PROJECT_DIR}/app.py"
-    sed -i "s#_PLACEHOLDER_ADMIN_PASSWORD_HASH_#${ADMIN_PASSWORD_HASH}#g" "${PROJECT_DIR}/app.py"
-    sed -i "s#_PLACEHOLDER_FLASK_SECRET_KEY_#${FLASK_SECRET_KEY}#g" "${PROJECT_DIR}/app.py"
-    sed -i "s#_PLACEHOLDER_SYSTEM_TITLE_#${SYSTEM_TITLE}#g" "${PROJECT_DIR}/app.py"
-
-    # --- 步骤 5: 创建 systemd 服务文件 ---
+    # --- 步骤 5: 写入 systemd 服务文件 ---
     echo -e "${GREEN}>>> 步骤 5: 创建 systemd 服务文件...${NC}"
-    cat << EOF > /etc/systemd/system/mail-smtp.service
-[Unit]
+
+    SMTP_SERVICE_CONTENT="[Unit]
 Description=Custom Python SMTP Server (Receive-Only)
 After=network.target
+
 [Service]
 User=root
 Group=root
 WorkingDirectory=${PROJECT_DIR}
 ExecStart=${PROJECT_DIR}/venv/bin/python3 ${PROJECT_DIR}/app.py
 Restart=always
+
 [Install]
 WantedBy=multi-user.target
-EOF
+"
+    echo "${SMTP_SERVICE_CONTENT}" > /etc/systemd/system/mail-smtp.service
 
-    cat << EOF > /etc/systemd/system/mail-api.service
-[Unit]
+    API_SERVICE_CONTENT="[Unit]
 Description=Gunicorn instance for Mail Web UI (Receive-Only)
 After=network.target
+
 [Service]
 User=root
 Group=root
 WorkingDirectory=${PROJECT_DIR}
 ExecStart=${PROJECT_DIR}/venv/bin/gunicorn --workers 3 --bind 0.0.0.0:${WEB_PORT} 'app:app'
 Restart=always
+
 [Install]
 WantedBy=multi-user.target
-EOF
+"
+    echo "${API_SERVICE_CONTENT}" > /etc/systemd/system/mail-api.service
 
-    # --- 步骤 6: 启动核心服务 ---
-    echo -e "${GREEN}>>> 步骤 6: 启动核心服务...${NC}"
+    # --- 步骤 6: 替换占位符并启动服务 ---
+    echo -e "${GREEN}>>> 步骤 6: 替换占位符并启动服务...${NC}"
+    sed -i "s#_PLACEHOLDER_ADMIN_USERNAME_#${ADMIN_USERNAME}#g" "${PROJECT_DIR}/app.py"
+    sed -i "s#_PLACEHOLDER_ADMIN_PASSWORD_HASH_#${ADMIN_PASSWORD_HASH}#g" "${PROJECT_DIR}/app.py"
+    sed -i "s#_PLACEHOLDER_FLASK_SECRET_KEY_#${FLASK_SECRET_KEY}#g" "${PROJECT_DIR}/app.py"
+    sed -i "s#_PLACEHOLDER_SYSTEM_TITLE_#${SYSTEM_TITLE}#g" "${PROJECT_DIR}/app.py"
+    
     ${PROJECT_DIR}/venv/bin/python3 -c "from app import init_db; init_db()"
     systemctl daemon-reload
     systemctl restart mail-smtp.service mail-api.service
@@ -715,7 +721,7 @@ EOF
 
 # --- 主逻辑 ---
 clear
-echo -e "${BLUE}轻量级邮件服务器一键脚本（终极版） ${NC}"
+echo -e "${BLUE}轻量级邮件服务器一键脚本 (终极版V)${NC}"
 echo "=============================================================="
 echo "请选择要执行的操作:"
 echo "1) 安装邮件服务器核心服务"
