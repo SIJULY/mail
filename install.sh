@@ -1,16 +1,15 @@
 #!/bin/bash
-
 # =================================================================================
-# 轻量级邮件服务器一键安装脚本 (V7 - 自定义端口/直接IP版)
+# 轻量级邮件服务器一键安装脚本 (旗舰最终版)
 #
 # 作者: Gemini
 # 日期: 2025-08-02
 #
 # 功能:
+# - 【个性化定制】: 安装时可自定义系统标题，显示在登录页。
+# - 【UI美化】: 融合了原版脚本的CSS样式，界面更美观。
 # - 【自定义端口/IP访问】: 安装时可指定Web后台端口，并配置为可直接通过IP访问。
-# - 【自动生成地址】: 安装后自动显示最终的登录URL。
 # - 【健壮性增强】: 自动处理APT锁，禁用干扰服务，全程显示安装日志。
-# - 【核心服务模式】: 只安装后台服务，后期可自行配置域名反代。
 #
 # =================================================================================
 
@@ -77,12 +76,14 @@ uninstall_server() {
 
 # --- 安装功能 ---
 install_server() {
-    echo -e "${GREEN}欢迎使用轻量级邮件服务器一键安装脚本 (V7 - 自定义端口/直接IP版)！${NC}"
+    echo -e "${GREEN}欢迎使用轻量级邮件服务器一键安装脚本 (旗舰最终版)！${NC}"
     
     # --- 收集用户信息 ---
+    read -p "请输入您想为本系统命名的标题 (例如: 我的私人邮箱): " SYSTEM_TITLE
+    SYSTEM_TITLE=${SYSTEM_TITLE:-"轻量级邮件服务器"}
+
     read -p "请输入您希望使用的网页后台端口 [默认为: 2099]: " WEB_PORT
     WEB_PORT=${WEB_PORT:-2099}
-    # 验证端口是否为有效数字
     if ! [[ "$WEB_PORT" =~ ^[0-9]+$ ]] || [ "$WEB_PORT" -lt 1 ] || [ "$WEB_PORT" -gt 65535 ]; then
         echo -e "${RED}错误：端口号无效，请输入1-65535之间的数字。${NC}"
         exit 1
@@ -104,7 +105,7 @@ install_server() {
     echo -e "${BLUE}>>> 正在获取服务器公网IP...${NC}"
     PUBLIC_IP=$(curl -s icanhazip.com)
     if [ -z "$PUBLIC_IP" ]; then
-        echo -e "${RED}错误：无法自动获取公网IP地址。请检查网络连接或手动设置。${NC}"
+        echo -e "${RED}错误：无法自动获取公网IP地址。${NC}"
         exit 1
     fi
     echo -e "${GREEN}服务器公网IP为: ${PUBLIC_IP}${NC}"
@@ -120,7 +121,6 @@ install_server() {
     echo -e "${GREEN}>>> 步骤 2: 配置防火墙...${NC}"
     ufw allow ssh
     ufw allow 25/tcp
-    # 开放用户自定义的端口
     ufw allow ${WEB_PORT}/tcp
     ufw --force enable
 
@@ -134,7 +134,6 @@ install_server() {
     # --- 步骤 4: 写入核心应用代码 ---
     echo -e "${GREEN}>>> 步骤 4: 写入核心应用代码 (app.py)...${NC}"
     ADMIN_PASSWORD_HASH=$(${PROJECT_DIR}/venv/bin/python3 -c "from werkzeug.security import generate_password_hash; print(generate_password_hash('''$ADMIN_PASSWORD'''))")
-    # app.py 核心代码与上一版相同，此处省略以保持脚本简洁
     cat << 'EOF' > ${PROJECT_DIR}/app.py
 # -*- coding: utf-8 -*-
 import sqlite3, re, os, math, html, logging, sys
@@ -156,6 +155,7 @@ CLEANUP_INTERVAL_DAYS = 1
 EMAILS_TO_KEEP = 1000
 ADMIN_USERNAME = "_PLACEHOLDER_ADMIN_USERNAME_"
 ADMIN_PASSWORD_HASH = "_PLACEHOLDER_ADMIN_PASSWORD_HASH_"
+SYSTEM_TITLE = "_PLACEHOLDER_SYSTEM_TITLE_"
 app = Flask(__name__)
 app.config['SECRET_KEY'] = '_PLACEHOLDER_FLASK_SECRET_KEY_'
 handler = logging.StreamHandler(sys.stdout)
@@ -279,13 +279,34 @@ def login():
             return redirect(request.args.get('next') or url_for('view_emails'))
         else:
             flash('邮箱或密码错误', 'error')
-    return render_template_string('<!DOCTYPE html><html><head><title>登录</title></head><body><h2>登录</h2>{% with m=get_flashed_messages(with_categories=true) %}{% for c,msg in m %}<p style="color:red;">{{msg}}</p>{% endfor %}{% endwith %}<form method=post><p>邮箱: <input type=text name=email required></p><p>密码: <input type=password name=password required></p><p><input type=submit value=登录></p></form></body></html>')
+    return render_template_string('''
+        <!DOCTYPE html><html><head><title>登录 - {{ SYSTEM_TITLE }}</title><style>
+        body{display:flex;flex-direction:column;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;margin:0;background-color:#f4f4f4;}
+        .main-title{font-size:2em;color:#4CAF50;margin-bottom:1em;font-weight:bold;}
+        .login-box{padding:2em;border:1px solid #ddd;border-radius:8px;background-color:#fff;box-shadow:0 4px 6px rgba(0,0,0,0.1);width:300px;}
+        h2 {text-align:center;color:#333;margin-top:0;margin-bottom:1.5em;}
+        form {display:flex;flex-direction:column;}
+        label {margin-bottom:0.5em;color:#555;}
+        input[type="text"], input[type="password"] {padding:0.8em;margin-bottom:1em;border:1px solid #ccc;border-radius:4px;font-size:1em;}
+        input[type="submit"] {padding:0.8em;border:none;border-radius:4px;background-color:#5cb85c;color:white;cursor:pointer;font-size:1em;transition:background-color 0.2s;}
+        input[type="submit"]:hover {background-color:#4cae4c;}
+        .error{color:red;text-align:center;margin-bottom:1em;}
+        {% with m=get_flashed_messages(with_categories=true) %}{% for c,msg in m %}<p class="error">{{msg}}</p>{% endfor %}{% endwith %}
+        </style></head><body>
+        <h1 class="main-title">{{ SYSTEM_TITLE }}</h1>
+        <div class="login-box"><h2>邮箱登录</h2>
+        <form method="post">
+        <label for="email">邮箱地址 (或管理员账户):</label><input type="text" name="email" required>
+        <label for="password">密码:</label><input type="password" name="password" required>
+        <input type="submit" value="登录"></form></div></body></html>
+    ''', SYSTEM_TITLE=SYSTEM_TITLE)
 @app.route('/logout')
 def logout():
     session.clear(); return redirect(url_for('login'))
 def render_email_list_page(emails_data, page, total_pages, total_emails, search_query, is_admin_view):
     view_endpoint = 'admin_view' if is_admin_view else 'view_emails'
     title_text = f"管理员视图 (共 {total_emails} 封)" if is_admin_view else f"收件箱 ({session.get('user_email', '')} - 共 {total_emails} 封)"
+    
     processed_emails = []
     beijing_tz = ZoneInfo("Asia/Shanghai")
     for item in emails_data:
@@ -299,17 +320,70 @@ def render_email_list_page(emails_data, page, total_pages, total_emails, search_
             'recipient': item['recipient'], 'sender': parseaddr(item['sender'] or "")[1]
         })
     return render_template_string('''
-        <!DOCTYPE html><html><head><title>{{title}}</title><style>body{font-family:sans-serif;margin:1em;}table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ddd;padding:8px;text-align:left;vertical-align:top;word-wrap:break-word;}tr.unread{font-weight:bold;}th{background:#f0f0f0;}.actions-bar{margin-bottom:1em;}.pagination{margin-top:1em;}</style></head>
-        <body><div class="actions-bar"><h2>{{title}}</h2><div><a href="{{url_for('logout')}}">登出</a>{% if is_admin_view %}|<a href="{{url_for('manage_users')}}">管理用户</a>{% endif %}</div></div>
-        <form method=get><input type=text name=search value="{{search_query|e}}" placeholder="搜索..."><button type=submit>搜索</button></form>
-        <table><thead><tr><th>时间</th><th>主题</th><th>预览</th><th>收件人</th><th>发件人</th><th>操作</th></tr></thead><tbody>
-        {% for mail in mails %}
-        <tr class="{{'unread' if not mail.is_read else ''}}"><td>{{mail.bjt_str}}</td><td>{{mail.subject|e}}</td><td>{% if mail.is_code %}<strong style="color:red;">{{mail.preview_text|e}}</strong>{% else %}<div style="max-height:3.6em;overflow:hidden;">{{mail.preview_text|e}}</div>{% endif %}</td><td>{{mail.recipient|e}}</td><td>{{mail.sender|e}}</td><td><a href="{{url_for('view_email_detail',email_id=mail.id)}}" target=_blank>查看</a></td></tr>
-        {% else %}<tr><td colspan=6>无邮件</td></tr>{% endfor %}
-        </tbody></table>
-        <div class=pagination>{% if page>1 %}<a href="{{url_for(endpoint,page=page-1,search=search_query)}}">上一页</a>{% endif %} Page {{page}}/{{total_pages}} {% if page<total_pages %}<a href="{{url_for(endpoint,page=page+1,search=search_query)}}">下一页</a>{% endif %}</div>
-        </body></html>
-    ''', title=title_text, mails=processed_emails, page=page, total_pages=total_pages, search_query=search_query, is_admin_view=is_admin_view, endpoint=view_endpoint)
+        <!DOCTYPE html><html><head><title>{{title}} - {{SYSTEM_TITLE}}</title><style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; background-color: #f8f9fa; }
+            .container { padding: 2em; }
+            table { border-collapse: collapse; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1); background-color: #fff; }
+            th, td { border-bottom: 1px solid #dee2e6; padding: 12px 15px; text-align: left; vertical-align: top; word-wrap: break-word; }
+            tr:nth-child(even) { background-color: #f2f2f2; }
+            tr.unread { font-weight: bold; background-color: #fff3cd; }
+            tr:hover { background-color: #e9ecef; }
+            th { background-color: #4CAF50; color: white; text-transform: uppercase; font-size: 0.85em; letter-spacing: 0.05em; }
+            .actions-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5em; }
+            .actions-bar h2 { margin: 0; color: #333; }
+            .actions-bar a { color: #007bff; text-decoration: none; margin-left: 1em; }
+            .actions-bar a:hover { text-decoration: underline; }
+            .search-form { margin-bottom: 1.5em; }
+            .search-form input[type="text"] { padding: 8px; width: 300px; border: 1px solid #ccc; border-radius: 4px; }
+            .search-form button { padding: 8px 12px; border: none; background-color: #4CAF50; color: white; border-radius: 4px; cursor: pointer; }
+            .pagination { margin-top: 1.5em; text-align: center; }
+            .pagination a { color: #007bff; padding: 8px 12px; text-decoration: none; border: 1px solid #ddd; margin: 0 4px; border-radius: 4px; }
+            .pagination a:hover { background-color: #f2f2f2; }
+            .preview-code { color: #e83e8c; font-weight: bold; }
+            .preview-text { max-height: 3.6em; overflow: hidden; color: #6c757d; }
+            a.view-link { color: #17a2b8; text-decoration: none; }
+            a.view-link:hover { text-decoration: underline; }
+        </style></head><body>
+        <div class="container">
+            <div class="actions-bar">
+                <h2>{{title}}</h2>
+                <div>
+                    {% if is_admin_view %}<a href="{{url_for('manage_users')}}">管理用户</a>{% endif %}
+                    <a href="{{url_for('logout')}}">登出</a>
+                </div>
+            </div>
+            <form method="get" class="search-form">
+                <input type="text" name="search" value="{{search_query|e}}" placeholder="搜索主题、发件人、收件人...">
+                <button type="submit">搜索</button>
+            </form>
+            <table>
+                <thead><tr><th>时间</th><th>主题</th><th>预览</th><th>收件人</th><th>发件人</th><th>操作</th></tr></thead>
+                <tbody>
+                {% for mail in mails %}
+                <tr class="{{'unread' if not mail.is_read else ''}}">
+                    <td>{{mail.bjt_str}}</td>
+                    <td>{{mail.subject|e}}</td>
+                    <td>
+                        {% if mail.is_code %}
+                            <span class="preview-code">{{mail.preview_text|e}}</span>
+                        {% else %}
+                            <div class="preview-text">{{mail.preview_text|e}}</div>
+                        {% endif %}
+                    </td>
+                    <td>{{mail.recipient|e}}</td>
+                    <td>{{mail.sender|e}}</td>
+                    <td><a href="{{url_for('view_email_detail',email_id=mail.id)}}" target="_blank" class="view-link">查看</a></td>
+                </tr>
+                {% else %}<tr><td colspan="6" style="text-align:center;padding:2em;">无邮件</td></tr>{% endfor %}
+                </tbody>
+            </table>
+            <div class="pagination">
+                {% if page > 1 %}<a href="{{url_for(endpoint, page=page-1, search=search_query)}}">&laquo; 上一页</a>{% endif %}
+                <span> Page {{page}} / {{total_pages}} </span>
+                {% if page < total_pages %}<a href="{{url_for(endpoint, page=page+1, search=search_query)}}">下一页 &raquo;</a>{% endif %}
+            </div>
+        </div></body></html>
+    ''', title=title_text, mails=processed_emails, page=page, total_pages=total_pages, search_query=search_query, is_admin_view=is_admin_view, endpoint=view_endpoint, SYSTEM_TITLE=SYSTEM_TITLE)
 @app.route('/view')
 @login_required
 def view_emails():
@@ -331,11 +405,14 @@ def base_view_logic(is_admin_view):
         if search_query: where_clauses.append("(subject LIKE ? OR sender LIKE ?)"); params.extend([f"%{search_query}%"]*2)
     where_sql = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
     total_emails = conn.execute(f"SELECT COUNT(*) FROM received_emails {where_sql}", params).fetchone()[0]
-    total_pages = math.ceil(total_emails / EMAILS_PER_PAGE)
+    total_pages = math.ceil(total_emails / EMAILS_PER_PAGE) if total_emails > 0 else 1
     offset = (page - 1) * EMAILS_PER_PAGE
     emails_data = conn.execute(f"SELECT * FROM received_emails {where_sql} ORDER BY id DESC LIMIT ? OFFSET ?", params + [EMAILS_PER_PAGE, offset]).fetchall()
-    conn.execute(f"UPDATE received_emails SET is_read=1 WHERE id IN (SELECT id FROM received_emails {where_sql} ORDER BY id DESC LIMIT ? OFFSET ?)", params + [EMAILS_PER_PAGE, offset])
-    conn.commit()
+    # Mark as read only after fetching, to not affect the current view's unread status
+    email_ids_to_mark_read = [str(e['id']) for e in emails_data]
+    if email_ids_to_mark_read:
+        conn.execute(f"UPDATE received_emails SET is_read=1 WHERE id IN ({','.join(email_ids_to_mark_read)})")
+        conn.commit()
     conn.close()
     return render_email_list_page(emails_data, page, total_pages, total_emails, search_query, is_admin_view)
 @app.route('/view_email/<int:email_id>')
@@ -375,12 +452,57 @@ def manage_users():
     users = conn.execute("SELECT id, email FROM users WHERE email != ?", (ADMIN_USERNAME,)).fetchall()
     conn.close()
     return render_template_string('''
-        <!DOCTYPE html><html><head><title>管理用户</title></head><body><h2>管理用户</h2><a href="{{url_for('admin_view')}}">返回</a>
-        {% with m=get_flashed_messages(with_categories=true) %}{% for c,msg in m %}<p style="color:{{'green' if c=='success' else 'red'}}">{{msg}}</p>{% endfor %}{% endwith %}
-        <h3>添加新用户</h3><form method=post><input type=hidden name=action value=add><input type=email name=email placeholder="邮箱" required><input type=password name=password placeholder="密码" required><button type=submit>添加</button></form>
-        <h3>现有用户</h3><ul>{% for user in users %}<li>{{user.email}} <form method=post style="display:inline;"><input type=hidden name=action value=delete><input type=hidden name=user_id value={{user.id}}><button type=submit>删除</button></form></li>{% else %}<li>无普通用户</li>{% endfor %}</ul>
-        </body></html>
-    ''', users=users)
+        <!DOCTYPE html><html><head><title>管理用户 - {{SYSTEM_TITLE}}</title><style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; background-color: #f8f9fa; display: flex; justify-content: center; padding-top: 4em; }
+            .container { width: 100%; max-width: 800px; background: #fff; padding: 2em; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+            h2, h3 { color: #333; }
+            a { color: #007bff; text-decoration: none; }
+            a:hover { text-decoration: underline; }
+            form { margin-bottom: 2em; padding: 1.5em; border: 1px solid #ddd; border-radius: 5px; background: #fdfdfd; }
+            form.inline-form { display: inline; border: none; padding: 0; margin: 0; background: none; }
+            input[type="email"], input[type="password"] { width: calc(100% - 22px); padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; }
+            button { padding: 10px 15px; border: none; border-radius: 4px; color: white; cursor: pointer; transition: background-color 0.2s; }
+            button.add { background-color: #28a745; }
+            button.add:hover { background-color: #218838; }
+            button.delete { background-color: #dc3545; }
+            button.delete:hover { background-color: #c82333; }
+            ul { list-style: none; padding: 0; }
+            li { background: #f8f9fa; padding: 15px; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center; }
+            li:last-child { border-bottom: none; }
+            .flash-success { color: green; font-weight: bold; margin-bottom: 1em; }
+            .flash-error { color: red; font-weight: bold; margin-bottom: 1em; }
+            .nav-link { font-size: 1.2em; }
+        </style></head><body><div class="container">
+        <h2><a href="{{url_for('admin_view')}}" class="nav-link">&larr; 返回收件箱</a> | 管理用户</h2>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}
+                <p class="flash-{{ category }}">{{ message }}</p>
+            {% endfor %}
+        {% endwith %}
+        <h3>添加新用户</h3>
+        <form method="post">
+            <input type="hidden" name="action" value="add">
+            <input type="email" name="email" placeholder="新用户邮箱地址" required>
+            <input type="password" name="password" placeholder="新用户密码" required>
+            <button type="submit" class="add">添加用户</button>
+        </form>
+        <h3>现有用户</h3>
+        <ul>
+            {% for user in users %}
+            <li>
+                <span>{{user.email}}</span>
+                <form method="post" class="inline-form">
+                    <input type="hidden" name="action" value="delete">
+                    <input type="hidden" name="user_id" value="{{user.id}}">
+                    <button type="submit" class="delete">删除</button>
+                </form>
+            </li>
+            {% else %}
+                <li>无普通用户</li>
+            {% endfor %}
+        </ul>
+        </div></body></html>
+    ''', users=users, SYSTEM_TITLE=SYSTEM_TITLE)
 class CustomSMTPHandler:
     async def handle_DATA(self, server, session, envelope):
         try:
@@ -402,9 +524,11 @@ if __name__ == '__main__':
         controller.stop()
         app.logger.info("SMTP 服务器已关闭。")
 EOF
+    
     sed -i "s#_PLACEHOLDER_ADMIN_USERNAME_#${ADMIN_USERNAME}#g" "${PROJECT_DIR}/app.py"
     sed -i "s#_PLACEHOLDER_ADMIN_PASSWORD_HASH_#${ADMIN_PASSWORD_HASH}#g" "${PROJECT_DIR}/app.py"
     sed -i "s#_PLACEHOLDER_FLASK_SECRET_KEY_#${FLASK_SECRET_KEY}#g" "${PROJECT_DIR}/app.py"
+    sed -i "s#_PLACEHOLDER_SYSTEM_TITLE_#${SYSTEM_TITLE}#g" "${PROJECT_DIR}/app.py"
 
     # --- 步骤 5: 创建 systemd 服务文件 ---
     echo -e "${GREEN}>>> 步骤 5: 创建 systemd 服务文件...${NC}"
@@ -422,7 +546,6 @@ Restart=always
 WantedBy=multi-user.target
 EOF
 
-    # 使用变量来动态设置gunicorn的监听地址和端口
     cat << EOF > /etc/systemd/system/mail-api.service
 [Unit]
 Description=Gunicorn instance for Mail Web UI (Receive-Only)
@@ -460,7 +583,7 @@ EOF
 
 # --- 主逻辑 ---
 clear
-echo -e "${BLUE}轻量级邮件服务器一键脚本 (V7 - 自定义端口/直接IP版)${NC}"
+echo -e "${BLUE}轻量级邮件服务器一键脚本 (旗舰最终版)${NC}"
 echo "=============================================================="
 echo "请选择要执行的操作:"
 echo "1) 安装邮件服务器核心服务"
