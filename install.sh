@@ -1,6 +1,6 @@
 #!/bin/bash
 # =================================================================================
-# 轻量级邮件服务器一键安装脚本 (UI定制最终版)
+# 轻量级邮件服务器一键安装脚本 (UI定制最终版 )
 #
 # 作者: 小龙女她爸
 # 日期: 2025-08-02
@@ -28,7 +28,7 @@ handle_apt_locks() {
     echo -e "${YELLOW}>>> 正在检查并处理APT锁...${NC}"
     if ! command -v killall &> /dev/null; then
         echo "正在安装psmisc以使用killall命令..."
-        apt-get install -y psmisc
+        apt-get -y install psmisc
     fi
     systemctl stop unattended-upgrades 2>/dev/null || true
     systemctl disable unattended-upgrades 2>/dev/null || true
@@ -107,8 +107,8 @@ install_server() {
     handle_apt_locks
     echo -e "${GREEN}>>> 步骤 1: 更新系统并安装依赖...${NC}"
     apt-get update
-    apt-get upgrade -y
-    apt-get install -y python3-pip python3-venv ufw curl
+    apt-get -y upgrade
+    apt-get -y install python3-pip python3-venv ufw curl
     
     # --- 步骤 2: 配置防火墙 ---
     echo -e "${GREEN}>>> 步骤 2: 配置防火墙...${NC}"
@@ -320,12 +320,13 @@ def render_email_list_page(emails_data, page, total_pages, total_emails, search_
     return render_template_string('''
         <!DOCTYPE html><html><head><title>{{title}} - {{SYSTEM_TITLE}}</title><style>
             body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; background-color: #f8f9fa; font-size: 14px; }
-            .container { max-width: 1200px; margin: 0 auto; padding: 2em; }
-            table { border-collapse: collapse; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.05); background-color: #fff; margin-top: 1.5em; table-layout: fixed; }
-            th, td { border-bottom: 1px solid #dee2e6; padding: 12px 15px; text-align: left; vertical-align: middle; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+            .container { max-width: 1300px; margin: 0 auto; padding: 2em; }
+            table { border-collapse: collapse; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.05); background-color: #fff; margin-top: 1.5em; table-layout: fixed; border: 1px solid #dee2e6; }
+            th, td { padding: 12px 15px; vertical-align: middle; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-bottom: 1px solid #dee2e6; border-right: 1px solid #dee2e6;}
+            th:last-child, td:last-child { border-right: none; }
             tr.unread { font-weight: bold; background-color: #fffaf0; }
             tr:hover { background-color: #f1f3f5; }
-            th { background-color: #f8f9fa; color: #495057; text-transform: uppercase; font-size: 0.85em; letter-spacing: 0.05em; }
+            th { background-color: #4CAF50; color: white; text-transform: uppercase; font-size: 0.85em; letter-spacing: 0.05em; text-align: center; }
             .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5em; }
             .top-bar h2 { margin: 0; color: #333; font-size: 1.5em; }
             .top-bar .user-actions { display: flex; gap: 10px; }
@@ -344,6 +345,7 @@ def render_email_list_page(emails_data, page, total_pages, total_emails, search_
             .preview-code { color: #e83e8c; font-weight: bold; font-family: monospace; }
             a.view-link { color: #007bff; text-decoration: none; }
             a.view-link:hover { text-decoration: underline; }
+            td { text-align: left; }
             td.preview-cell { white-space: normal; word-wrap: break-word; }
         </style></head><body>
         <div class="container">
@@ -362,14 +364,15 @@ def render_email_list_page(emails_data, page, total_pages, total_emails, search_
             <div class="controls">
                 <div class="bulk-actions">
                     {% if is_admin_view %}
-                        <button type="submit" form="delete-selected-form" class="btn btn-secondary">删除选中邮件</button>
+                        <button onclick="window.location.reload();" class="btn btn-secondary">刷新</button>
+                        <button type="submit" form="delete-selected-form" class="btn btn-secondary">删除选中</button>
                         <form id="delete-all-form" method="POST" action="{{url_for('delete_all_emails')}}" style="display: inline;" onsubmit="return confirm('您确定要删除所有邮件吗？这将无法恢复！');">
-                           <button type="submit" class="btn btn-danger">删除所有邮件</button>
+                           <button type="submit" class="btn btn-danger">删除所有</button>
                         </form>
                     {% endif %}
                 </div>
                 <form method="get" class="search-form" action="{{ url_for(endpoint) }}">
-                    <input type="text" name="search" value="{{search_query|e}}" placeholder="搜索主题或发件人...">
+                    <input type="text" name="search" value="{{search_query|e}}" placeholder="搜索...">
                     {% if token_view_context %}
                     <input type="hidden" name="token" value="{{ token_view_context.token }}">
                     <input type="hidden" name="mail" value="{{ token_view_context.mail }}">
@@ -383,15 +386,15 @@ def render_email_list_page(emails_data, page, total_pages, total_emails, search_
                 <thead><tr>
                     <th style="width: 3%;"><input type="checkbox" onclick="toggleAllCheckboxes(this);" {% if not is_admin_view %}style="display:none;"{% endif %}></th>
                     <th style="width: 15%;">时间 (北京)</th>
-                    <th style="width: 17%;">主题</th>
-                    <th style="width: 40%;">内容预览</th>
-                    <th style="width: 12%;">收件人</th>
-                    <th style="width: 13%;">发件人</th>
+                    <th style="width: 20%;">主题</th>
+                    <th style="width: 35%;">内容预览</th>
+                    <th style="width: 13%;">收件人</th>
+                    <th style="width: 14%;">发件人</th>
                 </tr></thead>
                 <tbody>
                 {% for mail in mails %}
                 <tr class="{{'unread' if not mail.is_read else ''}}">
-                    <td><input type="checkbox" name="selected_ids" value="{{mail.id}}" {% if not is_admin_view %}style="display:none;"{% endif %}></td>
+                    <td style="text-align: center;"><input type="checkbox" name="selected_ids" value="{{mail.id}}" {% if not is_admin_view %}style="display:none;"{% endif %}></td>
                     <td>{{mail.bjt_str}}</td>
                     <td>{{mail.subject|e}} <a href="{{ url_for('view_email_token_detail' if token_view_context else 'view_email_detail', email_id=mail.id, token=token_view_context.token if token_view_context) }}" target="_blank" class="view-link" title="新窗口打开">↳</a></td>
                     <td class="preview-cell">
@@ -690,14 +693,14 @@ EOF
     echo -e "您的网页版登录地址是："
     echo -e "${YELLOW}http://${PUBLIC_IP}:${WEB_PORT}${NC}"
     echo ""
-    echo -e "您新增的彩蛋查看地址格式为 (注意替换{}中的内容):"
+    echo -e "邮件查看地址格式为 (注意替换{}中的内容):"
     echo -e "${YELLOW}http://${PUBLIC_IP}:${WEB_PORT}/Mail?token=2088&mail={收件人邮箱地址}${NC}"
     echo "================================================================"
 }
 
 # --- 主逻辑 ---
 clear
-echo -e "${BLUE}轻量级邮件服务器一键脚本 (UI定制最终版)${NC}"
+echo -e "${BLUE}轻量级邮件服务器一键脚本 (UI定制最终版 )${NC}"
 echo "=============================================================="
 echo "请选择要执行的操作:"
 echo "1) 安装邮件服务器核心服务"
