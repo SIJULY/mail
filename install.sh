@@ -1,8 +1,8 @@
 #!/bin/bash
 # =================================================================================
-# 轻量级邮件服务器一键安装脚本 (智能API终极版)
+# 轻量级邮件服务器一键安装脚本 (智能预览最终版)
 #
-# 作者: 小龙女她爸
+# 作者:  小龙女她爸
 # 日期: 2025-08-02
 # =================================================================================
 
@@ -69,7 +69,7 @@ uninstall_server() {
 
 # --- 安装功能 ---
 install_server() {
-    echo -e "${GREEN}欢迎使用轻量级邮件服务器一键安装脚本 (智能API终极版)！${NC}"
+    echo -e "${GREEN}欢迎使用轻量级邮件服务器一键安装脚本 (智能预览最终版)！${NC}"
     
     # --- 收集用户信息 ---
     read -p "请输入您想为本系统命名的标题 (例如: 我的私人邮箱): " SYSTEM_TITLE
@@ -220,11 +220,18 @@ def process_email_data(to_address, raw_email_data):
     app.logger.info(f"邮件已存入: To='{final_recipient}', From='{final_sender}', Subject='{subject[:30]}...'")
     run_cleanup_if_needed()
 def extract_code_from_body(body_text):
-    if not body_text: return None
+    if not body_text:
+        return None
+    code_keywords = ['verification code', '验证码', '驗證碼', '検証コード', 'authentication code', 'your code is']
+    body_lower = body_text.lower()
+    if not any(keyword in body_lower for keyword in code_keywords):
+        return None
     match_specific = re.search(r'[^0-9A-Za-z](\d{6})[^0-9A-Za-z]', " " + body_text + " ")
-    if match_specific: return match_specific.group(1)
+    if match_specific:
+        return match_specific.group(1)
     match_general = re.search(r'\b(\d{4,8})\b', body_text)
-    if match_general: return match_general.group(1)
+    if match_general:
+        return match_general.group(1)
     return None
 def strip_tags_for_preview(html_content):
     if not html_content: return ""
@@ -310,7 +317,7 @@ def render_email_list_page(emails_data, page, total_pages, total_emails, search_
     for item in emails_data:
         utc_dt = datetime.strptime(item['timestamp'], '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
         bjt_str = utc_dt.astimezone(beijing_tz).strftime('%Y-%m-%d %H:%M:%S')
-        body_for_preview = strip_tags_for_preview(item['body']) if item['body_type'] and 'html' in item['body_type'] else item['body']
+        body_for_preview = strip_tags_for_preview(item['body']) if item['body_type'] and 'html' in item['body_type'] else (item['body'] or "")
         code = extract_code_from_body(body_for_preview)
         processed_emails.append({
             'id': item['id'], 'bjt_str': bjt_str, 'subject': item['subject'], 'is_read': item['is_read'],
@@ -348,6 +355,13 @@ def render_email_list_page(emails_data, page, total_pages, total_emails, search_
             a.view-link { color: #007bff; text-decoration: none; }
             a.view-link:hover { text-decoration: underline; }
             td { text-align: left; }
+            .preview-text {
+                overflow: hidden;
+                text-overflow: ellipsis;
+                display: -webkit-box;
+                -webkit-line-clamp: 2;
+                -webkit-box-orient: vertical;
+            }
         </style></head><body>
         <div class="container">
             <div class="top-bar">
@@ -397,12 +411,12 @@ def render_email_list_page(emails_data, page, total_pages, total_emails, search_
                 <tr class="{{'unread' if not mail.is_read else ''}}">
                     <td style="text-align: center;"><input type="checkbox" name="selected_ids" value="{{mail.id}}" {% if not is_admin_view %}style="display:none;"{% endif %}></td>
                     <td>{{mail.bjt_str}}</td>
-                    <td>{{mail.subject|e}} <a href="{{ url_for('view_email_token_detail' if token_view_context else 'view_email_detail', email_id=mail.id, token=token_view_context.token if token_view_context) }}" target="_blank" class="view-link" title="新窗口打开">↳</a></td>
+                    <td>{{mail.subject|e}} <a href="{{ url_for('view_email_detail', email_id=mail.id) }}" target="_blank" class="view-link" title="新窗口打开">↳</a></td>
                     <td>
                         {% if mail.is_code %}
                             <span class="preview-code">{{mail.preview_text|e}}</span>
                         {% else %}
-                            {{mail.preview_text|e}}
+                            <div class="preview-text" title="{{mail.preview_text|e}}">{{mail.preview_text|e}}</div>
                         {% endif %}
                     </td>
                     <td>{{mail.recipient|e}}</td>
@@ -479,9 +493,6 @@ def base_view_logic(is_admin_view, mark_as_read=True, recipient_override=None):
 
     conn.close()
     return render_email_list_page(emails_data, page, total_pages, total_emails, search_query, is_admin_view, token_view_context=token_context)
-# =================================================================================
-# === 新的智能API逻辑 START ===
-# =================================================================================
 @app.route('/Mail')
 def view_mail_by_token():
     token = request.args.get('token')
@@ -496,15 +507,12 @@ def view_mail_by_token():
     try:
         messages = conn.execute("SELECT id, subject, body, body_type FROM received_emails WHERE recipient = ? ORDER BY id DESC LIMIT 50", (recipient_mail,)).fetchall()
         for msg in messages:
-            subject = msg['subject'] or ""
-            if any(keyword in subject.lower() for keyword in subject_keywords):
+            subject = (msg['subject'] or "").lower().strip()
+            if any(subject.startswith(keyword) for keyword in subject_keywords):
                 return Response(msg['body'], mimetype=f"{msg['body_type'] or 'text/html'}; charset=utf-8")
         return jsonify({"error": "Verification email not found"}), 404
     finally:
         if conn: conn.close()
-# =================================================================================
-# === 新的智能API逻辑 END ===
-# =================================================================================
 @app.route('/delete_selected_emails', methods=['POST'])
 @login_required
 @admin_required
