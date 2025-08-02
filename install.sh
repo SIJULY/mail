@@ -1,15 +1,16 @@
 #!/bin/bash
 # =================================================================================
-# 轻量级邮件服务器一键安装脚本 (旗舰最终版)
+# 轻量级邮件服务器一键安装脚本 (功能美化旗舰版)
 #
-# 作者: Gemini
+# 作者: 小龙女她爸
 # 日期: 2025-08-02
 #
 # 功能:
+# - 【功能UI增强】: 增加刷新、全选、批量删除、全部删除功能，并进行美化。
 # - 【个性化定制】: 安装时可自定义系统标题，显示在登录页。
-# - 【UI美化】: 融合了原版脚本的CSS样式，界面更美观。
 # - 【自定义端口/IP访问】: 安装时可指定Web后台端口，并配置为可直接通过IP访问。
 # - 【健壮性增强】: 自动处理APT锁，禁用干扰服务，全程显示安装日志。
+# - 【彩蛋功能】: 新增 /Mail 接口，可通过Token免密查看指定收件人的邮件列表。
 #
 # =================================================================================
 
@@ -76,7 +77,7 @@ uninstall_server() {
 
 # --- 安装功能 ---
 install_server() {
-    echo -e "${GREEN}欢迎使用轻量级邮件服务器一键安装脚本 (旗舰最终版)！${NC}"
+    echo -e "${GREEN}欢迎使用轻量级邮件服务器一键安装脚本 (功能美化旗舰版)！${NC}"
     
     # --- 收集用户信息 ---
     read -p "请输入您想为本系统命名的标题 (例如: 我的私人邮箱): " SYSTEM_TITLE
@@ -156,6 +157,8 @@ EMAILS_TO_KEEP = 1000
 ADMIN_USERNAME = "_PLACEHOLDER_ADMIN_USERNAME_"
 ADMIN_PASSWORD_HASH = "_PLACEHOLDER_ADMIN_PASSWORD_HASH_"
 SYSTEM_TITLE = "_PLACEHOLDER_SYSTEM_TITLE_"
+# --- 新增: 彩蛋功能的TOKEN ---
+SPECIAL_VIEW_TOKEN = "2088"
 app = Flask(__name__)
 app.config['SECRET_KEY'] = '_PLACEHOLDER_FLASK_SECRET_KEY_'
 handler = logging.StreamHandler(sys.stdout)
@@ -303,9 +306,13 @@ def login():
 @app.route('/logout')
 def logout():
     session.clear(); return redirect(url_for('login'))
-def render_email_list_page(emails_data, page, total_pages, total_emails, search_query, is_admin_view):
-    view_endpoint = 'admin_view' if is_admin_view else 'view_emails'
-    title_text = f"管理员视图 (共 {total_emails} 封)" if is_admin_view else f"收件箱 ({session.get('user_email', '')} - 共 {total_emails} 封)"
+def render_email_list_page(emails_data, page, total_pages, total_emails, search_query, is_admin_view, token_view_context=None):
+    if token_view_context:
+        view_endpoint = 'view_mail_by_token'
+        title_text = f"收件箱 ({token_view_context['mail']}) - 共 {total_emails} 封"
+    else:
+        view_endpoint = 'admin_view' if is_admin_view else 'view_emails'
+        title_text = f"管理员视图 (共 {total_emails} 封)" if is_admin_view else f"收件箱 ({session.get('user_email', '')} - 共 {total_emails} 封)"
     
     processed_emails = []
     beijing_tz = ZoneInfo("Asia/Shanghai")
@@ -325,17 +332,20 @@ def render_email_list_page(emails_data, page, total_pages, total_emails, search_
             .container { padding: 2em; }
             table { border-collapse: collapse; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1); background-color: #fff; }
             th, td { border-bottom: 1px solid #dee2e6; padding: 12px 15px; text-align: left; vertical-align: top; word-wrap: break-word; }
-            tr:nth-child(even) { background-color: #f2f2f2; }
+            tr:nth-child(even) { background-color: #f8f9fa; }
             tr.unread { font-weight: bold; background-color: #fff3cd; }
             tr:hover { background-color: #e9ecef; }
             th { background-color: #4CAF50; color: white; text-transform: uppercase; font-size: 0.85em; letter-spacing: 0.05em; }
-            .actions-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5em; }
-            .actions-bar h2 { margin: 0; color: #333; }
-            .actions-bar a { color: #007bff; text-decoration: none; margin-left: 1em; }
-            .actions-bar a:hover { text-decoration: underline; }
-            .search-form { margin-bottom: 1.5em; }
-            .search-form input[type="text"] { padding: 8px; width: 300px; border: 1px solid #ccc; border-radius: 4px; }
-            .search-form button { padding: 8px 12px; border: none; background-color: #4CAF50; color: white; border-radius: 4px; cursor: pointer; }
+            .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5em; flex-wrap: wrap; }
+            .top-bar h2 { margin: 0; color: #333; }
+            .top-bar .user-actions a { color: #007bff; text-decoration: none; margin-left: 1em; }
+            .top-bar .user-actions a:hover { text-decoration: underline; }
+            .controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5em; flex-wrap: wrap; }
+            .controls .bulk-actions { display: flex; align-items: center; gap: 10px; }
+            .controls .search-form input[type="text"] { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+            .controls .search-form button { padding: 8px 12px; border: none; background-color: #007bff; color: white; border-radius: 4px; cursor: pointer; }
+            button.control-btn { padding: 8px 12px; border: none; background-color: #6c757d; color: white; border-radius: 4px; cursor: pointer; }
+            button.delete-all-btn { background-color: #dc3545; }
             .pagination { margin-top: 1.5em; text-align: center; }
             .pagination a { color: #007bff; padding: 8px 12px; text-decoration: none; border: 1px solid #ddd; margin: 0 4px; border-radius: 4px; }
             .pagination a:hover { background-color: #f2f2f2; }
@@ -345,22 +355,45 @@ def render_email_list_page(emails_data, page, total_pages, total_emails, search_
             a.view-link:hover { text-decoration: underline; }
         </style></head><body>
         <div class="container">
-            <div class="actions-bar">
+            <div class="top-bar">
                 <h2>{{title}}</h2>
-                <div>
-                    {% if is_admin_view %}<a href="{{url_for('manage_users')}}">管理用户</a>{% endif %}
-                    <a href="{{url_for('logout')}}">登出</a>
+                <div class="user-actions">
+                    {% if not token_view_context %}
+                        {% if is_admin_view %}<a href="{{url_for('manage_users')}}">管理用户</a>{% endif %}
+                        <a href="{{url_for('logout')}}">登出</a>
+                    {% endif %}
                 </div>
             </div>
-            <form method="get" class="search-form">
-                <input type="text" name="search" value="{{search_query|e}}" placeholder="搜索主题、发件人、收件人...">
-                <button type="submit">搜索</button>
-            </form>
+            
+            <div class="controls">
+                <div class="bulk-actions">
+                    {% if is_admin_view %}
+                    <button class="control-btn" onclick="window.location.reload();">刷新列表</button>
+                    <form id="delete-all-form" method="POST" action="{{url_for('delete_all_emails')}}" style="display: inline;" onsubmit="return confirm('您确定要删除所有邮件吗？这将无法恢复！');">
+                        <button type="submit" class="control-btn delete-all-btn">删除所有邮件</button>
+                    </form>
+                    {% endif %}
+                </div>
+                <form method="get" class="search-form" action="{{ url_for(view_endpoint) }}">
+                    <input type="text" name="search" value="{{search_query|e}}" placeholder="搜索...">
+                    {% if token_view_context %}
+                    <input type="hidden" name="token" value="{{ token_view_context.token }}">
+                    <input type="hidden" name="mail" value="{{ token_view_context.mail }}">
+                    {% endif %}
+                    <button type="submit">搜索</button>
+                </form>
+            </div>
+            
+            <form id="delete-selected-form" method="POST" action="{{url_for('delete_selected_emails')}}">
             <table>
-                <thead><tr><th>时间</th><th>主题</th><th>预览</th><th>收件人</th><th>发件人</th><th>操作</th></tr></thead>
+                <thead><tr>
+                    {% if is_admin_view %}<th><input type="checkbox" onclick="toggleAllCheckboxes(this);"></th>{% endif %}
+                    <th>时间</th><th>主题</th><th>预览</th><th>收件人</th><th>发件人</th><th>操作</th>
+                </tr></thead>
                 <tbody>
                 {% for mail in mails %}
                 <tr class="{{'unread' if not mail.is_read else ''}}">
+                    {% if is_admin_view %}<td><input type="checkbox" name="selected_ids" value="{{mail.id}}"></td>{% endif %}
                     <td>{{mail.bjt_str}}</td>
                     <td>{{mail.subject|e}}</td>
                     <td>
@@ -372,18 +405,40 @@ def render_email_list_page(emails_data, page, total_pages, total_emails, search_
                     </td>
                     <td>{{mail.recipient|e}}</td>
                     <td>{{mail.sender|e}}</td>
-                    <td><a href="{{url_for('view_email_detail',email_id=mail.id)}}" target="_blank" class="view-link">查看</a></td>
+                    <td><a href="{{ url_for('view_email_token_detail' if token_view_context else 'view_email_detail', email_id=mail.id, token=token_view_context.token if token_view_context) }}" target="_blank" class="view-link">查看</a></td>
                 </tr>
-                {% else %}<tr><td colspan="6" style="text-align:center;padding:2em;">无邮件</td></tr>{% endfor %}
+                {% else %}<tr><td colspan="{% if is_admin_view %}7{% else %}6{% endif %}" style="text-align:center;padding:2em;">无邮件</td></tr>{% endfor %}
                 </tbody>
             </table>
-            <div class="pagination">
-                {% if page > 1 %}<a href="{{url_for(endpoint, page=page-1, search=search_query)}}">&laquo; 上一页</a>{% endif %}
-                <span> Page {{page}} / {{total_pages}} </span>
-                {% if page < total_pages %}<a href="{{url_for(endpoint, page=page+1, search=search_query)}}">下一页 &raquo;</a>{% endif %}
+            {% if is_admin_view and mails %}
+            <div class="controls" style="margin-top: 1em; justify-content: flex-start;">
+                <button type="submit" class="control-btn delete-all-btn">删除选中邮件</button>
             </div>
-        </div></body></html>
-    ''', title=title_text, mails=processed_emails, page=page, total_pages=total_pages, search_query=search_query, is_admin_view=is_admin_view, endpoint=view_endpoint, SYSTEM_TITLE=SYSTEM_TITLE)
+            {% endif %}
+            </form>
+
+            <div class="pagination">
+                {% set pagination_params = {'page': page-1, 'search': search_query} %}
+                {% if token_view_context %}{% do pagination_params.update({'token': token_view_context.token, 'mail': token_view_context.mail}) %}{% endif %}
+                {% if page > 1 %}<a href="{{url_for(view_endpoint, **pagination_params)}}">&laquo; 上一页</a>{% endif %}
+                
+                <span> Page {{page}} / {{total_pages}} </span>
+
+                {% set pagination_params['page'] = page + 1 %}
+                {% if page < total_pages %}<a href="{{url_for(view_endpoint, **pagination_params)}}">下一页 &raquo;</a>{% endif %}
+            </div>
+        </div>
+        <script>
+            function toggleAllCheckboxes(source) {
+                var form = document.getElementById('delete-selected-form');
+                var checkboxes = form.getElementsByName('selected_ids');
+                for(var i=0; i < checkboxes.length; i++) {
+                    checkboxes[i].checked = source.checked;
+                }
+            }
+        </script>
+        </body></html>
+    ''', title=title_text, mails=processed_emails, page=page, total_pages=total_pages, search_query=search_query, is_admin_view=is_admin_view, endpoint=view_endpoint, SYSTEM_TITLE=SYSTEM_TITLE, token_view_context=token_view_context)
 @app.route('/view')
 @login_required
 def view_emails():
@@ -393,28 +448,78 @@ def view_emails():
 @admin_required
 def admin_view():
     return base_view_logic(is_admin_view=True)
-def base_view_logic(is_admin_view):
+def base_view_logic(is_admin_view, mark_as_read=True, recipient_override=None):
     search_query = request.args.get('search', '').strip()
     page = request.args.get('page', 1, type=int)
     conn = get_db_conn()
     where_clauses, params = [], []
-    if is_admin_view:
+    token_context = None
+
+    if recipient_override: # 彩蛋功能
+        is_admin_view = False
+        where_clauses.append("recipient = ?"); params.append(recipient_override)
+        if search_query: where_clauses.append("(subject LIKE ? OR sender LIKE ?)"); params.extend([f"%{search_query}%"]*2)
+        token_context = {'token': request.args.get('token'), 'mail': recipient_override}
+    elif is_admin_view: # 管理员登录
         if search_query: where_clauses.append("(subject LIKE ? OR recipient LIKE ? OR sender LIKE ?)"); params.extend([f"%{search_query}%"]*3)
-    else:
+    else: # 普通用户登录
         where_clauses.append("recipient = ?"); params.append(session['user_email'])
         if search_query: where_clauses.append("(subject LIKE ? OR sender LIKE ?)"); params.extend([f"%{search_query}%"]*2)
+
     where_sql = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
     total_emails = conn.execute(f"SELECT COUNT(*) FROM received_emails {where_sql}", params).fetchone()[0]
     total_pages = math.ceil(total_emails / EMAILS_PER_PAGE) if total_emails > 0 else 1
     offset = (page - 1) * EMAILS_PER_PAGE
     emails_data = conn.execute(f"SELECT * FROM received_emails {where_sql} ORDER BY id DESC LIMIT ? OFFSET ?", params + [EMAILS_PER_PAGE, offset]).fetchall()
-    # Mark as read only after fetching, to not affect the current view's unread status
-    email_ids_to_mark_read = [str(e['id']) for e in emails_data]
-    if email_ids_to_mark_read:
-        conn.execute(f"UPDATE received_emails SET is_read=1 WHERE id IN ({','.join(email_ids_to_mark_read)})")
-        conn.commit()
+    
+    if mark_as_read: # 仅在登录状态下，将本页邮件标记为已读
+        ids_to_mark = [str(e['id']) for e in emails_data if not e['is_read']]
+        if ids_to_mark:
+            conn.execute(f"UPDATE received_emails SET is_read=1 WHERE id IN ({','.join(ids_to_mark)})")
+            conn.commit()
+
     conn.close()
-    return render_email_list_page(emails_data, page, total_pages, total_emails, search_query, is_admin_view)
+    return render_email_list_page(emails_data, page, total_pages, total_emails, search_query, is_admin_view, token_view_context=token_context)
+# --- 功能路由 ---
+@app.route('/Mail')
+def view_mail_by_token():
+    token = request.args.get('token')
+    recipient_mail = request.args.get('mail')
+    if token != SPECIAL_VIEW_TOKEN:
+        return "无效的Token", 403
+    if not recipient_mail:
+        return "必须提供 'mail' 参数", 400
+    # 调用核心逻辑，但指定不标记为已读，并覆盖收件人
+    return base_view_logic(is_admin_view=False, mark_as_read=False, recipient_override=recipient_mail)
+@app.route('/delete_selected_emails', methods=['POST'])
+@login_required
+@admin_required
+def delete_selected_emails():
+    selected_ids = request.form.getlist('selected_ids')
+    if selected_ids:
+        conn = get_db_conn()
+        placeholders = ','.join('?' for _ in selected_ids)
+        query = f"DELETE FROM received_emails WHERE id IN ({placeholders})"
+        conn.execute(query, selected_ids)
+        conn.commit()
+        conn.close()
+        flash(f"成功删除 {len(selected_ids)} 封邮件。", 'success')
+    else:
+        flash("没有选中任何邮件。", 'error')
+    return redirect(request.referrer or url_for('admin_view'))
+
+@app.route('/delete_all_emails', methods=['POST'])
+@login_required
+@admin_required
+def delete_all_emails():
+    conn = get_db_conn()
+    # 为安全起见，我们只删除当前搜索条件下的所有邮件，而不是整个数据库
+    # 这个功能可以后续再精确化，目前保持删除全部
+    count = conn.execute("DELETE FROM received_emails").rowcount
+    conn.commit()
+    conn.close()
+    flash(f"成功删除所有 {count} 封邮件。", 'success')
+    return redirect(url_for('admin_view'))
 @app.route('/view_email/<int:email_id>')
 @login_required
 def view_email_detail(email_id):
@@ -424,7 +529,29 @@ def view_email_detail(email_id):
     else:
         email = conn.execute("SELECT * FROM received_emails WHERE id = ? AND recipient = ?", (email_id, session['user_email'])).fetchone()
     if not email: conn.close(); return "邮件未找到或无权查看", 404
-    conn.execute("UPDATE received_emails SET is_read = 1 WHERE id = ?", (email_id,)); conn.commit(); conn.close()
+    # 登录查看时，标记为已读
+    if not email['is_read']:
+        conn.execute("UPDATE received_emails SET is_read = 1 WHERE id = ?", (email_id,)); conn.commit()
+    conn.close()
+    
+    body_content = email['body'] or ''
+    if 'text/html' in (email['body_type'] or ''):
+        email_display = f'<iframe srcdoc="{html.escape(body_content)}" style="width:100%;height:calc(100vh - 20px);border:none;"></iframe>'
+    else:
+        email_display = f'<pre style="white-space:pre-wrap;word-wrap:break-word;">{escape(body_content)}</pre>'
+    return Response(email_display, mimetype="text/html; charset=utf-8")
+# --- 新增: 为彩蛋功能提供查看邮件详情的路由 ---
+@app.route('/view_email_token/<int:email_id>')
+def view_email_token_detail(email_id):
+    token = request.args.get('token')
+    if token != SPECIAL_VIEW_TOKEN:
+        return "无效的Token", 403
+    conn = get_db_conn()
+    email = conn.execute("SELECT * FROM received_emails WHERE id = ?", (email_id,)).fetchone()
+    conn.close()
+    if not email: return "邮件未找到", 404
+    
+    # Token查看不改变已读状态
     body_content = email['body'] or ''
     if 'text/html' in (email['body_type'] or ''):
         email_display = f'<iframe srcdoc="{html.escape(body_content)}" style="width:100%;height:calc(100vh - 20px);border:none;"></iframe>'
@@ -578,12 +705,15 @@ EOF
     echo "----------------------------------------------------------------"
     echo -e "您的网页版登录地址是："
     echo -e "${YELLOW}http://${PUBLIC_IP}:${WEB_PORT}${NC}"
+    echo ""
+    echo -e 查看地址格式为 (注意替换{}中的内容):"
+    echo -e "${YELLOW}http://${PUBLIC_IP}:${WEB_PORT}/Mail?token=2088&mail={收件人邮箱地址}${NC}"
     echo "================================================================"
 }
 
 # --- 主逻辑 ---
 clear
-echo -e "${BLUE}轻量级邮件服务器一键脚本 (旗舰最终版)${NC}"
+echo -e "${BLUE}轻量级邮件服务器一键脚本 (功能美化旗舰版)${NC}"
 echo "=============================================================="
 echo "请选择要执行的操作:"
 echo "1) 安装邮件服务器核心服务"
