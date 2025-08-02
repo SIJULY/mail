@@ -1,17 +1,9 @@
 #!/bin/bash
 # =================================================================================
-# 轻量级邮件服务器一键安装脚本 (功能美化旗舰版 )
+# 轻量级邮件服务器一键安装脚本 (功能美化旗舰版）
 #
 # 作者: 小龙女她爸
 # 日期: 2025-08-02
-#
-# 功能:
-# - 【功能UI增强】: 增加刷新、全选、批量删除、全部删除功能，并进行美化。
-# - 【个性化定制】: 安装时可自定义系统标题，显示在登录页。
-# - 【自定义端口/IP访问】: 安装时可指定Web后台端口，并配置为可直接通过IP访问。
-# - 【健壮性增强】: 自动处理APT锁，禁用干扰服务，全程显示安装日志。
-# - 【彩蛋功能】: 新增 /Mail 接口，可通过Token免密查看指定收件人的邮件列表。
-#
 # =================================================================================
 
 # --- 颜色定义 ---
@@ -77,7 +69,7 @@ uninstall_server() {
 
 # --- 安装功能 ---
 install_server() {
-    echo -e "${GREEN}欢迎使用轻量级邮件服务器一键安装脚本 (功能美化旗舰版)！${NC}"
+    echo -e "${GREEN}欢迎使用轻量级邮件服务器一键安装脚本 (最终修正版)！${NC}"
     
     # --- 收集用户信息 ---
     read -p "请输入您想为本系统命名的标题 (例如: 我的私人邮箱): " SYSTEM_TITLE
@@ -157,7 +149,7 @@ EMAILS_TO_KEEP = 1000
 ADMIN_USERNAME = "_PLACEHOLDER_ADMIN_USERNAME_"
 ADMIN_PASSWORD_HASH = "_PLACEHOLDER_ADMIN_PASSWORD_HASH_"
 SYSTEM_TITLE = "_PLACEHOLDER_SYSTEM_TITLE_"
-# --- 新增: 彩蛋功能的TOKEN ---
+# --- TOKEN ---
 SPECIAL_VIEW_TOKEN = "2088"
 app = Flask(__name__)
 app.config['SECRET_KEY'] = '_PLACEHOLDER_FLASK_SECRET_KEY_'
@@ -418,14 +410,19 @@ def render_email_list_page(emails_data, page, total_pages, total_emails, search_
             </form>
 
             <div class="pagination">
-                {% set pagination_params = {'page': page-1, 'search': search_query} %}
-                {% if token_view_context %}{% do pagination_params.update({'token': token_view_context.token, 'mail': token_view_context.mail}) %}{% endif %}
-                {% if page > 1 %}<a href="{{url_for(view_endpoint, **pagination_params)}}">&laquo; 上一页</a>{% endif %}
+                {% if page > 1 %}
+                    {% set pagination_params = {'page': page-1, 'search': search_query} %}
+                    {% if token_view_context %}{% set _ = pagination_params.update({'token': token_view_context.token, 'mail': token_view_context.mail}) %}{% endif %}
+                    <a href="{{url_for(view_endpoint, **pagination_params)}}">&laquo; 上一页</a>
+                {% endif %}
                 
                 <span> Page {{page}} / {{total_pages}} </span>
 
-                {% set pagination_params['page'] = page + 1 %}
-                {% if page < total_pages %}<a href="{{url_for(view_endpoint, **pagination_params)}}">下一页 &raquo;</a>{% endif %}
+                {% if page < total_pages %}
+                    {% set pagination_params = {'page': page + 1, 'search': search_query} %}
+                    {% if token_view_context %}{% set _ = pagination_params.update({'token': token_view_context.token, 'mail': token_view_context.mail}) %}{% endif %}
+                    <a href="{{url_for(view_endpoint, **pagination_params)}}">下一页 &raquo;</a>
+                {% endif %}
             </div>
         </div>
         <script>
@@ -513,8 +510,6 @@ def delete_selected_emails():
 @admin_required
 def delete_all_emails():
     conn = get_db_conn()
-    # 为安全起见，我们只删除当前搜索条件下的所有邮件，而不是整个数据库
-    # 这个功能可以后续再精确化，目前保持删除全部
     count = conn.execute("DELETE FROM received_emails").rowcount
     conn.commit()
     conn.close()
@@ -540,7 +535,7 @@ def view_email_detail(email_id):
     else:
         email_display = f'<pre style="white-space:pre-wrap;word-wrap:break-word;">{escape(body_content)}</pre>'
     return Response(email_display, mimetype="text/html; charset=utf-8")
-# --- 新增: 为彩蛋功能提供查看邮件详情的路由 ---
+# --- 查看邮件详情的路由 ---
 @app.route('/view_email_token/<int:email_id>')
 def view_email_token_detail(email_id):
     token = request.args.get('token')
@@ -706,14 +701,14 @@ EOF
     echo -e "您的网页版登录地址是："
     echo -e "${YELLOW}http://${PUBLIC_IP}:${WEB_PORT}${NC}"
     echo ""
-    echo -e "查看地址格式为 (注意替换{}中的内容):"
+    echo -e "您新增的彩蛋查看地址格式为 (注意替换{}中的内容):"
     echo -e "${YELLOW}http://${PUBLIC_IP}:${WEB_PORT}/Mail?token=2088&mail={收件人邮箱地址}${NC}"
     echo "================================================================"
 }
 
 # --- 主逻辑 ---
 clear
-echo -e "${BLUE}轻量级邮件服务器一键脚本 (功能美化旗舰版 )${NC}"
+echo -e "${BLUE} 轻量级邮件服务器一键安装脚本 (功能美化旗舰版）${NC}"
 echo "=============================================================="
 echo "请选择要执行的操作:"
 echo "1) 安装邮件服务器核心服务"
