@@ -1,6 +1,6 @@
 #!/bin/bash
 # =================================================================================
-# 轻量级邮件服务器一键安装脚本 (功能美化旗舰版 ) 
+# 轻量级邮件服务器一键安装脚本 (UI定制最终版)
 #
 # 作者: 小龙女她爸
 # 日期: 2025-08-02
@@ -69,7 +69,7 @@ uninstall_server() {
 
 # --- 安装功能 ---
 install_server() {
-    echo -e "${GREEN}欢迎使用轻量级邮件服务器一键安装脚本 (最终修正版)！${NC}"
+    echo -e "${GREEN}欢迎使用轻量级邮件服务器一键安装脚本 (UI定制最终版)！${NC}"
     
     # --- 收集用户信息 ---
     read -p "请输入您想为本系统命名的标题 (例如: 我的私人邮箱): " SYSTEM_TITLE
@@ -96,7 +96,7 @@ install_server() {
     
     # --- 自动获取公网IP ---
     echo -e "${BLUE}>>> 正在获取服务器公网IP...${NC}"
-    PUBLIC_IP=$(curl -s icanhazip.com)
+    PUBLIC_IP=$(curl -s icanhazip.com || echo "127.0.0.1")
     if [ -z "$PUBLIC_IP" ]; then
         echo -e "${RED}错误：无法自动获取公网IP地址。${NC}"
         exit 1
@@ -276,14 +276,14 @@ def login():
     return render_template_string('''
         <!DOCTYPE html><html><head><title>登录 - {{ SYSTEM_TITLE }}</title><style>
         body{display:flex;flex-direction:column;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;margin:0;background-color:#f4f4f4;}
-        .main-title{font-size:2em;color:#4CAF50;margin-bottom:1em;font-weight:bold;}
+        .main-title{font-size:2em;color:#333;margin-bottom:1em;font-weight:bold;}
         .login-box{padding:2em;border:1px solid #ddd;border-radius:8px;background-color:#fff;box-shadow:0 4px 6px rgba(0,0,0,0.1);width:300px;}
         h2 {text-align:center;color:#333;margin-top:0;margin-bottom:1.5em;}
         form {display:flex;flex-direction:column;}
         label {margin-bottom:0.5em;color:#555;}
         input[type="text"], input[type="password"] {padding:0.8em;margin-bottom:1em;border:1px solid #ccc;border-radius:4px;font-size:1em;}
-        input[type="submit"] {padding:0.8em;border:none;border-radius:4px;background-color:#5cb85c;color:white;cursor:pointer;font-size:1em;transition:background-color 0.2s;}
-        input[type="submit"]:hover {background-color:#4cae4c;}
+        input[type="submit"] {padding:0.8em;border:none;border-radius:4px;background-color:#007bff;color:white;cursor:pointer;font-size:1em;transition:background-color 0.2s;}
+        input[type="submit"]:hover {background-color:#0056b3;}
         .error{color:red;text-align:center;margin-bottom:1em;}
         {% with m=get_flashed_messages(with_categories=true) %}{% for c,msg in m %}<p class="error">{{msg}}</p>{% endfor %}{% endwith %}
         </style></head><body>
@@ -319,39 +319,42 @@ def render_email_list_page(emails_data, page, total_pages, total_emails, search_
         })
     return render_template_string('''
         <!DOCTYPE html><html><head><title>{{title}} - {{SYSTEM_TITLE}}</title><style>
-            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; background-color: #f8f9fa; }
-            .container { padding: 2em; }
-            table { border-collapse: collapse; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1); background-color: #fff; }
-            th, td { border-bottom: 1px solid #dee2e6; padding: 12px 15px; text-align: left; vertical-align: top; word-wrap: break-word; }
-            tr:nth-child(even) { background-color: #f8f9fa; }
-            tr.unread { font-weight: bold; background-color: #fff3cd; }
-            tr:hover { background-color: #e9ecef; }
-            th { background-color: #4CAF50; color: white; text-transform: uppercase; font-size: 0.85em; letter-spacing: 0.05em; }
-            .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5em; flex-wrap: wrap; }
-            .top-bar h2 { margin: 0; color: #333; }
-            .top-bar .user-actions a { color: #007bff; text-decoration: none; margin-left: 1em; }
-            .top-bar .user-actions a:hover { text-decoration: underline; }
-            .controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5em; flex-wrap: wrap; }
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; background-color: #f8f9fa; font-size: 14px; }
+            .container { max-width: 1200px; margin: 0 auto; padding: 2em; }
+            table { border-collapse: collapse; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.05); background-color: #fff; margin-top: 1.5em; table-layout: fixed; }
+            th, td { border-bottom: 1px solid #dee2e6; padding: 12px 15px; text-align: left; vertical-align: middle; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+            tr.unread { font-weight: bold; background-color: #fffaf0; }
+            tr:hover { background-color: #f1f3f5; }
+            th { background-color: #f8f9fa; color: #495057; text-transform: uppercase; font-size: 0.85em; letter-spacing: 0.05em; }
+            .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5em; }
+            .top-bar h2 { margin: 0; color: #333; font-size: 1.5em; }
+            .top-bar .user-actions { display: flex; gap: 10px; }
+            .btn { text-decoration: none; display: inline-block; padding: 8px 15px; border: 1px solid transparent; border-radius: 4px; color: white; cursor: pointer; font-size: 0.9em; transition: background-color 0.2s; }
+            .btn-primary { background-color: #007bff; border-color: #007bff; }
+            .btn-primary:hover { background-color: #0056b3; }
+            .btn-secondary { background-color: #6c757d; border-color: #6c757d; }
+            .btn-danger { background-color: #dc3545; border-color: #dc3545; }
+            .controls { display: flex; justify-content: space-between; align-items: center; padding-bottom: 1.5em; border-bottom: 1px solid #dee2e6; }
             .controls .bulk-actions { display: flex; align-items: center; gap: 10px; }
-            .controls .search-form input[type="text"] { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
-            .controls .search-form button { padding: 8px 12px; border: none; background-color: #007bff; color: white; border-radius: 4px; cursor: pointer; }
-            button.control-btn { padding: 8px 12px; border: none; background-color: #6c757d; color: white; border-radius: 4px; cursor: pointer; }
-            button.delete-all-btn { background-color: #dc3545; }
+            .search-form { display: flex; gap: 5px; }
+            .search-form input[type="text"] { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
             .pagination { margin-top: 1.5em; text-align: center; }
             .pagination a { color: #007bff; padding: 8px 12px; text-decoration: none; border: 1px solid #ddd; margin: 0 4px; border-radius: 4px; }
-            .pagination a:hover { background-color: #f2f2f2; }
-            .preview-code { color: #e83e8c; font-weight: bold; }
-            .preview-text { max-height: 3.6em; overflow: hidden; color: #6c757d; }
-            a.view-link { color: #17a2b8; text-decoration: none; }
+            .pagination a:hover { background-color: #e9ecef; }
+            .preview-code { color: #e83e8c; font-weight: bold; font-family: monospace; }
+            a.view-link { color: #007bff; text-decoration: none; }
             a.view-link:hover { text-decoration: underline; }
+            td.preview-cell { white-space: normal; word-wrap: break-word; }
         </style></head><body>
         <div class="container">
             <div class="top-bar">
                 <h2>{{title}}</h2>
                 <div class="user-actions">
+                    {% if not token_view_context and is_admin_view %}
+                        <a href="{{url_for('manage_users')}}" class="btn btn-primary">管理用户</a>
+                    {% endif %}
                     {% if not token_view_context %}
-                        {% if is_admin_view %}<a href="{{url_for('manage_users')}}">管理用户</a>{% endif %}
-                        <a href="{{url_for('logout')}}">登出</a>
+                         <a href="{{url_for('logout')}}" class="btn btn-danger">登出</a>
                     {% endif %}
                 </div>
             </div>
@@ -359,53 +362,51 @@ def render_email_list_page(emails_data, page, total_pages, total_emails, search_
             <div class="controls">
                 <div class="bulk-actions">
                     {% if is_admin_view %}
-                    <button class="control-btn" onclick="window.location.reload();">刷新列表</button>
-                    <form id="delete-all-form" method="POST" action="{{url_for('delete_all_emails')}}" style="display: inline;" onsubmit="return confirm('您确定要删除所有邮件吗？这将无法恢复！');">
-                        <button type="submit" class="control-btn delete-all-btn">删除所有邮件</button>
-                    </form>
+                        <button type="submit" form="delete-selected-form" class="btn btn-secondary">删除选中邮件</button>
+                        <form id="delete-all-form" method="POST" action="{{url_for('delete_all_emails')}}" style="display: inline;" onsubmit="return confirm('您确定要删除所有邮件吗？这将无法恢复！');">
+                           <button type="submit" class="btn btn-danger">删除所有邮件</button>
+                        </form>
                     {% endif %}
                 </div>
                 <form method="get" class="search-form" action="{{ url_for(endpoint) }}">
-                    <input type="text" name="search" value="{{search_query|e}}" placeholder="搜索...">
+                    <input type="text" name="search" value="{{search_query|e}}" placeholder="搜索主题或发件人...">
                     {% if token_view_context %}
                     <input type="hidden" name="token" value="{{ token_view_context.token }}">
                     <input type="hidden" name="mail" value="{{ token_view_context.mail }}">
                     {% endif %}
-                    <button type="submit">搜索</button>
+                    <button type="submit" class="btn btn-primary">搜索</button>
                 </form>
             </div>
             
             <form id="delete-selected-form" method="POST" action="{{url_for('delete_selected_emails')}}">
             <table>
                 <thead><tr>
-                    {% if is_admin_view %}<th><input type="checkbox" onclick="toggleAllCheckboxes(this);"></th>{% endif %}
-                    <th>时间</th><th>主题</th><th>预览</th><th>收件人</th><th>发件人</th><th>操作</th>
+                    <th style="width: 3%;"><input type="checkbox" onclick="toggleAllCheckboxes(this);" {% if not is_admin_view %}style="display:none;"{% endif %}></th>
+                    <th style="width: 15%;">时间 (北京)</th>
+                    <th style="width: 17%;">主题</th>
+                    <th style="width: 40%;">内容预览</th>
+                    <th style="width: 12%;">收件人</th>
+                    <th style="width: 13%;">发件人</th>
                 </tr></thead>
                 <tbody>
                 {% for mail in mails %}
                 <tr class="{{'unread' if not mail.is_read else ''}}">
-                    {% if is_admin_view %}<td><input type="checkbox" name="selected_ids" value="{{mail.id}}"></td>{% endif %}
+                    <td><input type="checkbox" name="selected_ids" value="{{mail.id}}" {% if not is_admin_view %}style="display:none;"{% endif %}></td>
                     <td>{{mail.bjt_str}}</td>
-                    <td>{{mail.subject|e}}</td>
-                    <td>
+                    <td>{{mail.subject|e}} <a href="{{ url_for('view_email_token_detail' if token_view_context else 'view_email_detail', email_id=mail.id, token=token_view_context.token if token_view_context) }}" target="_blank" class="view-link" title="新窗口打开">↳</a></td>
+                    <td class="preview-cell">
                         {% if mail.is_code %}
                             <span class="preview-code">{{mail.preview_text|e}}</span>
                         {% else %}
-                            <div class="preview-text">{{mail.preview_text|e}}</div>
+                            {{mail.preview_text|e}}
                         {% endif %}
                     </td>
                     <td>{{mail.recipient|e}}</td>
                     <td>{{mail.sender|e}}</td>
-                    <td><a href="{{ url_for('view_email_token_detail' if token_view_context else 'view_email_detail', email_id=mail.id, token=token_view_context.token if token_view_context) }}" target="_blank" class="view-link">查看</a></td>
                 </tr>
-                {% else %}<tr><td colspan="{% if is_admin_view %}7{% else %}6{% endif %}" style="text-align:center;padding:2em;">无邮件</td></tr>{% endfor %}
+                {% else %}<tr><td colspan="6" style="text-align:center;padding:2em;">无邮件</td></tr>{% endfor %}
                 </tbody>
             </table>
-            {% if is_admin_view and mails %}
-            <div class="controls" style="margin-top: 1em; justify-content: flex-start;">
-                <button type="submit" class="control-btn delete-all-btn">删除选中邮件</button>
-            </div>
-            {% endif %}
             </form>
 
             <div class="pagination">
@@ -414,9 +415,7 @@ def render_email_list_page(emails_data, page, total_pages, total_emails, search_
                     {% if token_view_context %}{% set _ = pagination_params.update({'token': token_view_context.token, 'mail': token_view_context.mail}) %}{% endif %}
                     <a href="{{url_for(endpoint, **pagination_params)}}">&laquo; 上一页</a>
                 {% endif %}
-                
                 <span> Page {{page}} / {{total_pages}} </span>
-
                 {% if page < total_pages %}
                     {% set pagination_params = {'page': page + 1, 'search': search_query} %}
                     {% if token_view_context %}{% set _ = pagination_params.update({'token': token_view_context.token, 'mail': token_view_context.mail}) %}{% endif %}
@@ -451,14 +450,14 @@ def base_view_logic(is_admin_view, mark_as_read=True, recipient_override=None):
     where_clauses, params = [], []
     token_context = None
 
-    if recipient_override: #API
+    if recipient_override:
         is_admin_view = False
         where_clauses.append("recipient = ?"); params.append(recipient_override)
         if search_query: where_clauses.append("(subject LIKE ? OR sender LIKE ?)"); params.extend([f"%{search_query}%"]*2)
         token_context = {'token': request.args.get('token'), 'mail': recipient_override}
-    elif is_admin_view: # 管理员登录
+    elif is_admin_view:
         if search_query: where_clauses.append("(subject LIKE ? OR recipient LIKE ? OR sender LIKE ?)"); params.extend([f"%{search_query}%"]*3)
-    else: # 普通用户登录
+    else:
         where_clauses.append("recipient = ?"); params.append(session['user_email'])
         if search_query: where_clauses.append("(subject LIKE ? OR sender LIKE ?)"); params.extend([f"%{search_query}%"]*2)
 
@@ -468,7 +467,7 @@ def base_view_logic(is_admin_view, mark_as_read=True, recipient_override=None):
     offset = (page - 1) * EMAILS_PER_PAGE
     emails_data = conn.execute(f"SELECT * FROM received_emails {where_sql} ORDER BY id DESC LIMIT ? OFFSET ?", params + [EMAILS_PER_PAGE, offset]).fetchall()
     
-    if mark_as_read: # 仅在登录状态下，将本页邮件标记为已读
+    if mark_as_read:
         ids_to_mark = [str(e['id']) for e in emails_data if not e['is_read']]
         if ids_to_mark:
             conn.execute(f"UPDATE received_emails SET is_read=1 WHERE id IN ({','.join(ids_to_mark)})")
@@ -497,9 +496,6 @@ def delete_selected_emails():
         conn.execute(query, selected_ids)
         conn.commit()
         conn.close()
-        flash(f"成功删除 {len(selected_ids)} 封邮件。", 'success')
-    else:
-        flash("没有选中任何邮件。", 'error')
     return redirect(request.referrer or url_for('admin_view'))
 
 @app.route('/delete_all_emails', methods=['POST'])
@@ -507,10 +503,9 @@ def delete_selected_emails():
 @admin_required
 def delete_all_emails():
     conn = get_db_conn()
-    count = conn.execute("DELETE FROM received_emails").rowcount
+    conn.execute("DELETE FROM received_emails")
     conn.commit()
     conn.close()
-    flash(f"成功删除所有 {count} 封邮件。", 'success')
     return redirect(url_for('admin_view'))
 @app.route('/view_email/<int:email_id>')
 @login_required
@@ -695,14 +690,14 @@ EOF
     echo -e "您的网页版登录地址是："
     echo -e "${YELLOW}http://${PUBLIC_IP}:${WEB_PORT}${NC}"
     echo ""
-    echo -e "邮件查看地址格式为 (注意替换{}中的内容):"
+    echo -e "您新增的彩蛋查看地址格式为 (注意替换{}中的内容):"
     echo -e "${YELLOW}http://${PUBLIC_IP}:${WEB_PORT}/Mail?token=2088&mail={收件人邮箱地址}${NC}"
     echo "================================================================"
 }
 
 # --- 主逻辑 ---
 clear
-echo -e "${BLUE}轻量级邮件服务器一键安装脚本 (功能美化旗舰版 ) ${NC}"
+echo -e "${BLUE}轻量级邮件服务器一键脚本 (UI定制最终版)${NC}"
 echo "=============================================================="
 echo "请选择要执行的操作:"
 echo "1) 安装邮件服务器核心服务"
