@@ -69,7 +69,7 @@ uninstall_server() {
 
 # --- 安装功能 ---
 install_server() {
-    echo -e "${GREEN}欢迎使用轻量级邮件服务器一键安装脚本 (响应式UI终极版)！${NC}"
+    echo -e "${GREEN}欢迎使用轻量级邮件服务器一键安装脚本 (直达正文终极版)！${NC}"
     
     # --- 收集用户信息 ---
     read -p "请输入您想为本系统命名的标题 (例如: 我的私人邮箱): " SYSTEM_TITLE
@@ -487,7 +487,21 @@ def view_mail_by_token():
         return "无效的Token", 403
     if not recipient_mail:
         return "必须提供 'mail' 参数", 400
-    return base_view_logic(is_admin_view=False, mark_as_read=False, recipient_override=recipient_mail)
+    
+    conn = get_db_conn()
+    email = conn.execute("SELECT * FROM received_emails WHERE recipient = ? ORDER BY id DESC LIMIT 1", (recipient_mail,)).fetchone()
+    conn.close()
+
+    if not email:
+        return render_template_string('<!DOCTYPE html><html><head><title>无邮件</title><body style="font-family: sans-serif; text-align: center; padding-top: 5em;"><h1>收件箱 ({{recipient}})</h1><p>此邮箱没有任何邮件。</p></body></html>', recipient=recipient_mail)
+
+    body_content = email['body'] or ''
+    if 'text/html' in (email['body_type'] or ''):
+        email_display = f'<iframe srcdoc="{html.escape(body_content)}" style="width:100%;height:calc(100vh - 20px);border:none;"></iframe>'
+    else:
+        email_display = f'<pre style="white-space:pre-wrap;word-wrap:break-word;">{escape(body_content)}</pre>'
+    
+    return Response(email_display, mimetype="text/html; charset=utf-8")
 @app.route('/delete_selected_emails', methods=['POST'])
 @login_required
 @admin_required
@@ -701,7 +715,7 @@ EOF
 
 # --- 主逻辑 ---
 clear
-echo -e "${BLUE}轻量级邮件服务器一键脚本${NC}"
+echo -e "${BLUE}轻量级邮件服务器一键脚本（终极版） ${NC}"
 echo "=============================================================="
 echo "请选择要执行的操作:"
 echo "1) 安装邮件服务器核心服务"
