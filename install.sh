@@ -1,8 +1,8 @@
 #!/bin/bash
 # =================================================================================
-# 轻量级邮件服务器一键安装脚本 (智能预览最终版)
+# 轻量级邮件服务器一键安装脚本 (Caddy整合终极版)
 #
-# 作者:  小龙女她爸
+# 作者: 小龙女她爸
 # 日期: 2025-08-02
 # =================================================================================
 
@@ -48,7 +48,6 @@ handle_apt_locks() {
 # --- 卸载功能 ---
 uninstall_server() {
     echo -e "${YELLOW}警告：你确定要卸载邮件服务器核心服务吗？${NC}"
-    echo "- 注意: 本脚本不会关闭您之前自定义的防火墙端口。"
     read -p "请输入 'yes' 以确认卸载: " CONFIRM_UNINSTALL
     if [ "$CONFIRM_UNINSTALL" != "yes" ]; then
         echo "卸载已取消。"
@@ -67,9 +66,79 @@ uninstall_server() {
     exit 0
 }
 
+# --- Caddy反代功能 ---
+setup_caddy_reverse_proxy() {
+    echo -e "${BLUE}>>> 欢迎使用 Caddy 自动反向代理配置向导 <<<${NC}"
+
+    # 1. 安装 Caddy
+    if ! command -v caddy &> /dev/null; then
+        echo -e "${YELLOW}>>> 未检测到 Caddy，正在为您安装...${NC}"
+        apt-get install -y debian-keyring debian-archive-keyring apt-transport-https
+        curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+        curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list
+        apt-get update
+        apt-get install -y caddy
+        echo -e "${GREEN}>>> Caddy 安装完成。${NC}"
+    else
+        echo -e "${GREEN}>>> Caddy 已安装，跳过安装步骤。${NC}"
+    fi
+
+    # 2. 收集信息
+    read -p "请输入您要绑定的域名 (例如 mail.yourdomain.com): " DOMAIN_NAME
+    if [ -z "$DOMAIN_NAME" ]; then
+        echo -e "${RED}错误：域名不能为空。${NC}"
+        exit 1
+    fi
+
+    read -p "请输入您的邮箱地址 (用于 Let's Encrypt 申请SSL证书): " LETSENCRYPT_EMAIL
+    if [ -z "$LETSENCRYPT_EMAIL" ]; then
+        echo -e "${RED}错误：邮箱地址不能为空。${NC}"
+        exit 1
+    fi
+    
+    # 尝试从现有服务文件中读取端口，否则使用默认值
+    WEB_PORT=$(grep -oP '0.0.0.0:\K[0-9]+' /etc/systemd/system/mail-api.service 2>/dev/null || echo "2099")
+    read -p "请确认您的邮件服务Web后台端口 [默认为 ${WEB_PORT}]: " USER_WEB_PORT
+    WEB_PORT=${USER_WEB_PORT:-${WEB_PORT}}
+
+    # 3. 生成 Caddyfile
+    echo -e "${YELLOW}>>> 正在生成 Caddyfile 配置文件...${NC}"
+    CADDYFILE_CONTENT="{$DOMAIN_NAME} {
+    encode gzip
+    reverse_proxy 127.0.0.1:${WEB_PORT}
+    tls ${LETSENCRYPT_EMAIL}
+}"
+    
+    # 将配置写入Caddyfile。Caddy默认会加载/etc/caddy/Caddyfile
+    # 为避免覆盖用户其他配置，我们写入到 conf.d 目录中
+    mkdir -p /etc/caddy/conf.d/
+    echo "${CADDYFILE_CONTENT}" > /etc/caddy/conf.d/mail_server.caddy
+    
+    # 确保主Caddyfile导入了我们的配置
+    if ! grep -q "import /etc/caddy/conf.d/*.caddy" /etc/caddy/Caddyfile; then
+        echo -e "\nimport /etc/caddy/conf.d/*.caddy" >> /etc/caddy/Caddyfile
+    fi
+    
+    # 4. 重启 Caddy 服务
+    echo -e "${YELLOW}>>> 正在重新加载 Caddy 服务以应用新配置...${NC}"
+    systemctl reload caddy
+    
+    echo "================================================================"
+    echo -e "${GREEN}🎉 恭喜！Caddy 反向代理配置完成！ 🎉${NC}"
+    echo "================================================================"
+    echo ""
+    echo -e "您现在可以通过以下地址安全访问您的邮件服务后台："
+    echo -e "${YELLOW}https://${DOMAIN_NAME}${NC}"
+    echo ""
+    echo -e "Caddy 将会自动为您处理 HTTPS 证书的申请和续期。"
+    echo "================================================================"
+    exit 0
+}
+
+
 # --- 安装功能 ---
 install_server() {
-    echo -e "${GREEN}欢迎使用轻量级邮件服务器一键安装脚本 (智能预览最终版)！${NC}"
+    echo -e "${GREEN}欢迎使用轻量级邮件服务器一键安装脚本！${NC}"
     
     # --- 收集用户信息 ---
     read -p "请输入您想为本系统命名的标题 (例如: 我的私人邮箱): " SYSTEM_TITLE
@@ -114,6 +183,8 @@ install_server() {
     echo -e "${GREEN}>>> 步骤 2: 配置防火墙...${NC}"
     ufw allow ssh
     ufw allow 25/tcp
+    ufw allow 80/tcp  # Caddy 需要80和443端口来申请证书
+    ufw allow 443/tcp
     ufw allow ${WEB_PORT}/tcp
     ufw --force enable
 
@@ -186,18 +257,56 @@ def run_cleanup_if_needed():
     conn.close()
     if deleted_count > 0: app.logger.info(f"清理完成，成功删除了 {deleted_count} 封旧邮件。")
     with open(LAST_CLEANUP_FILE, 'w') as f: f.write(now.isoformat())
+
+# =================================================================================
+# === 智能转发解析逻辑 START (移植自 X 脚本) ===
+# =================================================================================
 def process_email_data(to_address, raw_email_data):
     msg = message_from_bytes(raw_email_data)
-    final_recipient = to_address
-    recipient_headers_to_check = ['Delivered-To', 'X-Original-To', 'To']
+    app.logger.info("="*20 + " 开始处理一封新邮件 " + "="*20)
+    app.logger.info(f"SMTP信封接收地址: {to_address}")
+
+    # 1. 修正收件人逻辑
+    final_recipient = None
+    recipient_headers_to_check = ['Delivered-To', 'X-Original-To', 'X-Forwarded-To', 'To']
     for header_name in recipient_headers_to_check:
         header_value = msg.get(header_name)
         if header_value:
             _, recipient_addr = parseaddr(header_value)
-            if recipient_addr: final_recipient = recipient_addr; break
-    final_sender = "unknown@sender.com"
-    from_header = msg.get('From', '')
-    if from_header: _, final_sender = parseaddr(from_header)
+            if recipient_addr and '@' in recipient_addr:
+                final_recipient = recipient_addr
+                break
+    if not final_recipient:
+        final_recipient = to_address
+    
+    # 2. 修正发件人逻辑
+    final_sender = None
+    icloud_hme_header = msg.get('X-ICLOUD-HME')
+    if icloud_hme_header:
+        match = re.search(r's=([^;]+)', icloud_hme_header)
+        if match:
+            final_sender = match.group(1)
+            app.logger.info(f"在 'X-ICLOUD-HME' 头中找到真实发件人: {final_sender}")
+
+    if not final_sender:
+        reply_to_header = msg.get('Reply-To', '')
+        from_header = msg.get('From', '')
+        _, reply_to_addr = parseaddr(reply_to_header)
+        _, from_addr = parseaddr(from_header)
+        if reply_to_addr and '@' in reply_to_addr:
+            final_sender = reply_to_addr
+            app.logger.info(f"采用 'Reply-To' 地址作为发件人: {final_sender}")
+        elif from_addr and '@' in from_addr:
+            final_sender = from_addr
+            app.logger.info(f"采用 'From' 地址作为发件人: {final_sender}")
+
+    if not final_sender:
+        final_sender = "unknown@sender.com"
+        app.logger.warning("警告: 无法确定发件人, 使用默认值。")
+        
+    app.logger.info(f"最终解析结果: 发件人 -> {final_sender}, 收件人 -> {final_recipient}")
+    
+    # 3. 提取主题和正文
     subject = ""
     if msg['Subject']:
         subject_raw, encoding = decode_header(msg['Subject'])[0]
@@ -212,26 +321,29 @@ def process_email_data(to_address, raw_email_data):
                 body = part.get_payload(decode=True).decode(part.get_content_charset() or 'utf-8', errors='ignore'); body_type="text/plain"
     else:
         body = msg.get_payload(decode=True).decode(msg.get_content_charset() or 'utf-8', errors='ignore')
+    
+    # 4. 存入数据库
     conn = get_db_conn()
     conn.execute("INSERT INTO received_emails (recipient, sender, subject, body, body_type) VALUES (?, ?, ?, ?, ?)",
                  (final_recipient, final_sender, subject, body, body_type))
     conn.commit()
     conn.close()
-    app.logger.info(f"邮件已存入: To='{final_recipient}', From='{final_sender}', Subject='{subject[:30]}...'")
+    app.logger.info(f"邮件已存入数据库")
     run_cleanup_if_needed()
+# =================================================================================
+# === 智能转发解析逻辑 END ===
+# =================================================================================
+
 def extract_code_from_body(body_text):
-    if not body_text:
-        return None
+    if not body_text: return None
     code_keywords = ['verification code', '验证码', '驗證碼', '検証コード', 'authentication code', 'your code is']
     body_lower = body_text.lower()
     if not any(keyword in body_lower for keyword in code_keywords):
         return None
     match_specific = re.search(r'[^0-9A-Za-z](\d{6})[^0-9A-Za-z]', " " + body_text + " ")
-    if match_specific:
-        return match_specific.group(1)
+    if match_specific: return match_specific.group(1)
     match_general = re.search(r'\b(\d{4,8})\b', body_text)
-    if match_general:
-        return match_general.group(1)
+    if match_general: return match_general.group(1)
     return None
 def strip_tags_for_preview(html_content):
     if not html_content: return ""
@@ -527,7 +639,7 @@ def delete_selected_emails():
             conn.commit()
         finally:
             if conn: conn.close()
-    return redirect(request.referrer or url_for('view_emails'))
+    return redirect(request.referrer or url_for('admin_view'))
 
 @app.route('/delete_all_emails', methods=['POST'])
 @login_required
@@ -539,7 +651,7 @@ def delete_all_emails():
         conn.commit()
     finally:
         if conn: conn.close()
-    return redirect(url_for('view_emails'))
+    return redirect(url_for('admin_view'))
 @app.route('/view_email/<int:email_id>')
 @login_required
 def view_email_detail(email_id):
@@ -740,8 +852,9 @@ echo "=============================================================="
 echo "请选择要执行的操作:"
 echo "1) 安装邮件服务器核心服务"
 echo "2) 卸载邮件服务器核心服务"
+echo "3) 【可选】配置域名反代和SSL证书 (Caddy)"
 echo ""
-read -p "请输入选项 [1-2]: " choice
+read -p "请输入选项 [1-3]: " choice
 
 case $choice in
     1)
@@ -749,6 +862,9 @@ case $choice in
         ;;
     2)
         uninstall_server
+        ;;
+    3)
+        setup_caddy_reverse_proxy
         ;;
     *)
         echo -e "${RED}无效选项，脚本退出。${NC}"
